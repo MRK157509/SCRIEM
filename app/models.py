@@ -26,4 +26,10 @@ class Alert(Base):
     severity = Column(String)
     status = Column(String, default="OPEN")
     description = Column(String)
+
+    # 🔥 THESE TWO LINES WERE MISSING
+    host = Column(String, index=True)
+    event_id = Column(Integer, index=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
