@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
+from app.services.detection import run_detection
 
 router = APIRouter()
 
@@ -17,6 +18,8 @@ def ingest_event(event: schemas.EventCreate, db: Session = Depends(get_db)):
     db.add(db_event)
     db.commit()
     db.refresh(db_event)
+
+    run_detection(db_event, db)
     return {"status": "stored", "event_id": db_event.id}
 
 from typing import Optional
