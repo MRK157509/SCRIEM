@@ -12,6 +12,10 @@ class Event(Base):
     action = Column(String)
     details = Column(JSON)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    host = Column(String, index=True)
+    event_id = Column(Integer, index=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Alert(Base):

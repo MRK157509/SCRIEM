@@ -8,6 +8,8 @@ def run_detection(event: models.Event, db: Session):
             title="Failed login detected",
             severity="LOW",
             description=f"User {event.user} failed login on {event.host}",
+            host=event.host,
+            event_id=event.id,
             db=db
         )
 
@@ -17,15 +19,19 @@ def run_detection(event: models.Event, db: Session):
             title="Malware execution",
             severity="HIGH",
             description=f"Suspicious process on {event.host}",
+            host=event.host,
+            event_id=event.id,
             db=db
         )
 
 
-def create_alert(title, severity, description, db):
+def create_alert(title: str, severity: str, description: str, host: str, event_id: int, db: Session):
     alert = models.Alert(
         title=title,
         severity=severity,
-        description=description
+        description=description,
+        host=host,
+        event_id=event_id,
     )
     db.add(alert)
     db.commit()
