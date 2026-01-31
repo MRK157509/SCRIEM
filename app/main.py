@@ -3,6 +3,7 @@ from .database import engine
 from .models import Base
 from app.routers import events
 from app.routers import alerts, timeline
+from app.routers import alerts
 
 Base.metadata.create_all(bind=engine)
 
@@ -12,6 +13,8 @@ app.include_router(alerts.router)
 app.include_router(timeline.router)
 
 app.include_router(events.router)
+
+app.include_router(alerts.router)
 
 
 @app.get("/")

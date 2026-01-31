@@ -31,5 +31,8 @@ class Alert(Base):
     host = Column(String, index=True)
     event_id = Column(Integer, index=True)
 
+    notes = Column(String, default="")
+    rule_name = Column(String)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
