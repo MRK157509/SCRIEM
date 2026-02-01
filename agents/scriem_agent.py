@@ -11,10 +11,11 @@ def load_config(path="config.example.json"):
 def send_event(base_url: str, event: dict, retries=5):
     url = f"{base_url}/events"
     delay = 1  # initial backoff delay (seconds)
+    headers = {"x-api-key": "scriem-secret-key"}
 
     for attempt in range(1, retries + 1):
         try:
-            r = requests.post(url, json=event, timeout=5)
+            r = requests.post(url, json=event, headers=headers, timeout=5)
             r.raise_for_status()
             return r.json()
         except Exception as e:
@@ -49,15 +50,35 @@ def main():
     host = cfg["host"]
     user = cfg["user"]
     interval = int(cfg.get("interval_seconds", 3))
+    batch_size = int(cfg.get("batch_size", 5))
+    flush_seconds = int(cfg.get("flush_seconds", 10))
+    queue = []
+    last_flush = time.time()
 
     print(f"[SCRIEM Agent] Sending events to {base_url} as host={host} every {interval}s")
     while True:
         event = generate_event(host, user)
-        try:
-            resp = send_event(base_url, event)
-            print("[OK]", resp)
-        except Exception as e:
-            print("[ERR]", e)
+        queue.append(event)
+
+        should_flush = len(queue) >= batch_size or (time.time() - last_flush) >= flush_seconds
+
+        if should_flush:
+            payload = queue[:]
+            queue.clear()
+
+            try:
+                url = f"{base_url}/events/batch"
+                headers = {"x-api-key": "scriem-secret-key"}
+                r = requests.post(url, json=payload, headers=headers, timeout=10)
+                r.raise_for_status()
+                print("[BATCH OK]", r.json())
+            except Exception as e:
+                print("[BATCH ERR]", e)
+                # put events back so we don't lose them
+                queue = payload + queue
+
+            last_flush = time.time()
+
         time.sleep(interval)
 
 if __name__ == "__main__":
