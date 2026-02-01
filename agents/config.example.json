@@ -1,0 +1,6 @@
+{
+  "scriem_base_url": "http://127.0.0.1:9000",
+  "host": "win-laptop-01",
+  "user": "localuser",
+  "interval_seconds": 3
+}
