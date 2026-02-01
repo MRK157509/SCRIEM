@@ -1,0 +1,6 @@
+Jan 30 20:01:01 server-4 sshd[111]: Failed password for admin from 10.0.0.5 port 51122
+Jan 30 20:01:05 server-4 sshd[112]: Failed password for admin from 10.0.0.5 port 51123
+Jan 30 20:01:09 server-4 sshd[113]: Failed password for admin from 10.0.0.5 port 51124
+Jan 30 20:01:15 server-4 sshd[120]: Accepted password for admin from 10.0.0.5 port 51130
+Jan 30 20:02:01 server-4 kernel: process started chrome.exe user=admin
+Jan 30 20:02:10 server-4 kernel: ran malware payload evil.exe user=admin

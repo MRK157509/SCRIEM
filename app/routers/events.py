@@ -3,18 +3,21 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
 from app.services.detection import run_detection
+from app.services.normalizer import normalize_event
 
 router = APIRouter()
 
 @router.post("/events")
 def ingest_event(event: schemas.EventCreate, db: Session = Depends(get_db)):
+    normalized = normalize_event(event.dict())
     db_event = models.Event(
-        event_type=event.event_type,
-        host=event.host,
-        user=event.user,
-        action=event.action,
-        details=event.details
+        event_type=normalized["event_type"],
+        host=normalized["host"],
+        user=normalized["user"],
+        action=normalized["action"],
+        details=normalized["details"]
     )
+
     db.add(db_event)
     db.commit()
     db.refresh(db_event)
