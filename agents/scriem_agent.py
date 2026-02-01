@@ -8,11 +8,22 @@ def load_config(path="config.example.json"):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def send_event(base_url: str, event: dict):
+def send_event(base_url: str, event: dict, retries=5):
     url = f"{base_url}/events"
-    r = requests.post(url, json=event, timeout=5)
-    r.raise_for_status()
-    return r.json()
+    delay = 1  # initial backoff delay (seconds)
+
+    for attempt in range(1, retries + 1):
+        try:
+            r = requests.post(url, json=event, timeout=5)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            print(f"[WARN] Attempt {attempt} failed: {e}")
+            if attempt == retries:
+                print("[DROP] Event dropped after max retries")
+                return None
+            time.sleep(delay)
+            delay *= 2  # exponential backoff
 
 def generate_event(host: str, user: str) -> dict:
     # Simulate realistic endpoint telemetry
