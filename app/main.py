@@ -5,6 +5,10 @@ from app.routers import events
 from app.routers import alerts, timeline
 from app.routers import alerts
 
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("scriem")
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SCRIEM")
