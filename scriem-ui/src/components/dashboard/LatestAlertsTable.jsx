@@ -1,56 +1,47 @@
-const severityPill = {
-  critical: "bg-red-500/15 text-red-200 ring-red-500/30",
-  high: "bg-amber-500/15 text-amber-200 ring-amber-500/30",
-  medium: "bg-yellow-500/15 text-yellow-200 ring-yellow-500/30",
-  low: "bg-sky-500/15 text-sky-200 ring-sky-500/30",
-};
-
-const statusChip = {
-  open: "bg-white/5 text-white/70 ring-white/10",
-  triage: "bg-cyan-500/10 text-cyan-200 ring-cyan-500/25",
-  closed: "bg-green-500/10 text-green-200 ring-green-500/25",
-};
-
-export default function LatestAlertsTable({ rows }) {
+export default function LatestAlertsTable({ rows = [], onRowClick }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
-      <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04)] overflow-hidden">
+      <div className="px-4 py-3 flex items-center justify-between border-b border-white/10">
         <div className="text-white font-semibold">SOC Activity</div>
         <div className="text-xs text-white/50">Latest Alerts</div>
       </div>
 
-      <div className="overflow-auto">
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="text-white/60 bg-black/20">
-            <tr>
-              <th className="px-4 py-2 text-left font-medium">Severity</th>
-              <th className="px-4 py-2 text-left font-medium">Status</th>
-              <th className="px-4 py-2 text-left font-medium">Alert Title</th>
-              <th className="px-4 py-2 text-left font-medium">Host</th>
-              <th className="px-4 py-2 text-left font-medium">Time</th>
-              <th className="px-4 py-2 text-left font-medium">Assignee</th>
+          <thead className="text-white/60">
+            <tr className="border-b border-white/10">
+              <th className="text-left font-medium px-4 py-3">Severity</th>
+              <th className="text-left font-medium px-4 py-3">Status</th>
+              <th className="text-left font-medium px-4 py-3">Alert Title</th>
+              <th className="text-left font-medium px-4 py-3">Host</th>
+              <th className="text-left font-medium px-4 py-3">Time</th>
+              <th className="text-left font-medium px-4 py-3">Assignee</th>
             </tr>
           </thead>
 
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t border-white/5 hover:bg-white/5 transition cursor-pointer">
-                <td className="px-4 py-2">
-                  <span className={["inline-flex px-2 py-1 rounded-lg text-xs ring-1", severityPill[r.severity]].join(" ")}>
-                    {r.severity}
-                  </span>
-                </td>
-                <td className="px-4 py-2">
-                  <span className={["inline-flex px-2 py-1 rounded-lg text-xs ring-1", statusChip[r.status]].join(" ")}>
-                    {r.status}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-white/85">{r.title}</td>
-                <td className="px-4 py-2 text-white/70">{r.host}</td>
-                <td className="px-4 py-2 text-white/70 tabular-nums">{r.time}</td>
-                <td className="px-4 py-2 text-white/70">{r.assignee}</td>
+          <tbody className="text-white/90">
+            {rows.map((row, idx) => (
+              <tr
+                key={row.id ?? idx}
+                onClick={() => onRowClick?.(row)}
+                className="border-t border-white/10 cursor-pointer hover:bg-white/5 transition"
+              >
+                <td className="px-4 py-3">{row.severity}</td>
+                <td className="px-4 py-3">{row.status}</td>
+                <td className="px-4 py-3">{row.title}</td>
+                <td className="px-4 py-3">{row.host}</td>
+                <td className="px-4 py-3 tabular-nums text-white/70">{row.time}</td>
+                <td className="px-4 py-3 text-white/70">{row.assignee}</td>
               </tr>
             ))}
+
+            {rows.length === 0 && (
+              <tr>
+                <td className="px-4 py-6 text-white/50" colSpan={6}>
+                  No alerts yet.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -1,0 +1,65 @@
+# =========================
+# SCRIEM / SIEM Monorepo
+# Backend (Python) + Frontend (Node/React/Vite)
+# =========================
+
+# ---------- Node / React / Vite ----------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+dist/
+build/
+.cache/
+.vite/
+.eslintcache
+
+# env files (frontend + backend)
+.env
+.env.*
+!.env.example
+
+# ---------- Python ----------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+
+# ---------- OS / Editor ----------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Windows shortcuts/metadata
+*.lnk
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# JetBrains
+.idea/
+
+# ---------- Docker ----------
+*.pid
+*.seed
+docker-compose.override.yml
+
+# ---------- Runtime / Data ----------
+data/
+storage/
+uploads/
+tmp/
+temp/

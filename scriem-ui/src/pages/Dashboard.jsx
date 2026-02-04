@@ -1,10 +1,28 @@
-import { kpis, latestAlerts, systemHealth, topEntities } from "../data/dashboardmock";
+import { useState } from "react";
+import {
+  kpis,
+  latestAlerts,
+  systemHealth,
+  topEntities,
+} from "../data/dashboardmock";
+
 import KpiCard from "../components/dashboard/KpiCard";
 import LatestAlertsTable from "../components/dashboard/LatestAlertsTable";
 import SystemHealthWidget from "../components/dashboard/SystemHealthWidget";
 import TopEntitiesWidget from "../components/dashboard/TopEntitiesWidget";
 
+import RightDrawer from "../components/drawer/RightDrawer";
+import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
+
 export default function Dashboard() {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState(null);
+
+  const openDrawerWithAlert = (alert) => {
+    setSelectedAlert(alert);
+    setDrawerOpen(true);
+  };
+
   return (
     <div className="space-y-5">
       {/* Page header */}
@@ -48,7 +66,10 @@ export default function Dashboard() {
       {/* Main grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">
-          <LatestAlertsTable rows={latestAlerts} />
+          <LatestAlertsTable
+            rows={latestAlerts}
+            onRowClick={openDrawerWithAlert}
+          />
         </div>
 
         <div className="space-y-4">
@@ -56,6 +77,16 @@ export default function Dashboard() {
           <TopEntitiesWidget data={topEntities} />
         </div>
       </div>
+
+      {/* GLOBAL RIGHT DRAWER */}
+      <RightDrawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={selectedAlert ? selectedAlert.title : "Alert Details"}
+        severity={selectedAlert?.severity}
+      >
+        <AlertDrawerContent alert={selectedAlert} />
+      </RightDrawer>
     </div>
   );
 }
