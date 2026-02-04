@@ -1,95 +1,133 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+
 import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
 
 export default function Timeline() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialQ = searchParams.get("q") || "";
+
+  const [q, setQ] = useState(initialQ);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
-  const storyCards = [
+  // Demo timeline items (replace with your API fetch later)
+  const [items, setItems] = useState(() => [
     {
-      id: "T-2001",
-      title: "Login spike detected",
-      severity: "Medium",
-      status: "Investigate",
-      host: "WIN-ACCT-02",
+      id: "evt-1",
+      title: "Suspicious Login",
+      severity: "high",
+      status: "open",
+      host: "host-01",
       user: "alice",
-      ip: "10.10.12.8",
-      details: "Rapid authentication attempts across multiple endpoints.",
+      ip: "10.0.0.5",
+      ts: new Date().toISOString(),
+      kind: "auth",
     },
     {
-      id: "T-2002",
-      title: "Suspicious process chain",
-      severity: "High",
-      status: "Investigate",
-      host: "FIN-SRV-01",
-      user: "svc-fin",
-      ip: "10.0.0.5",
-      details: "Unusual parent-child process chain with encoded commands.",
+      id: "evt-2",
+      title: "PowerShell Execution",
+      severity: "medium",
+      status: "open",
+      host: "host-02",
+      user: "bob",
+      ip: "192.168.1.20",
+      ts: new Date().toISOString(),
+      kind: "endpoint",
     },
-  ];
+  ]);
+
+  // Keep URL query param in sync with input (shareable pivots)
+  useEffect(() => {
+    const cur = searchParams.get("q") || "";
+    if (cur !== q) setQ(cur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const filtered = useMemo(() => {
+    const query = (q || "").trim().toLowerCase();
+    if (!query) return items;
+
+    return items.filter((it) =>
+      JSON.stringify(it).toLowerCase().includes(query)
+    );
+  }, [items, q]);
 
   const openDrawer = (item) => {
     setSelectedItem(item);
     setDrawerOpen(true);
   };
 
+  const onChangeQ = (next) => {
+    setQ(next);
+    const trimmed = (next || "").trim();
+    if (!trimmed) {
+      searchParams.delete("q");
+      setSearchParams(searchParams, { replace: true });
+      return;
+    }
+    setSearchParams({ q: trimmed }, { replace: true });
+  };
+
   return (
-    <div className="space-y-5">
-      <div>
-        <div className="text-white text-2xl font-semibold">Timeline</div>
-        <div className="text-white/50 text-sm">Investigation View</div>
-      </div>
-
-      <div className="p-3 rounded-2xl border border-white/10 bg-white/5 flex flex-wrap gap-2 items-center">
-        <input
-          className="h-9 w-72 px-3 rounded-xl bg-black/40 border border-white/10 text-white/70 text-sm"
-          placeholder="Search host…"
-        />
-
-        <select className="h-9 px-3 rounded-xl bg-black/40 border border-white/10 text-white/70 text-sm">
-          <option>Time Range: 24h</option>
-          <option>1h</option>
-          <option>24h</option>
-          <option>7d</option>
-        </select>
-
-        <div className="ml-auto flex gap-2">
-          <button className="h-9 px-3 rounded-xl bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-500/30 hover:bg-cyan-500/25 transition text-sm">
-            Story Mode
-          </button>
-          <button className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition text-sm">
-            Raw Events
-          </button>
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Timeline</h1>
+          <div className="text-sm text-slate-400">
+            Pivot search: try IP, user, host, hash, domain
+          </div>
         </div>
+
+        <input
+          value={q}
+          onChange={(e) => onChangeQ(e.target.value)}
+          placeholder="Search Timeline (e.g., 10.0.0.5, alice, host-01)"
+          className="w-[420px] max-w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white outline-none focus:border-slate-600"
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {storyCards.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => openDrawer(c)}
-            className="text-left p-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition"
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-white font-semibold">{c.title}</div>
-              <span className="px-2 py-1 rounded-lg border border-white/10 bg-black/30 text-xs text-white/70">
-                {c.severity}
-              </span>
-            </div>
-            <div className="mt-2 text-white/60 text-sm">{c.details}</div>
-            <div className="mt-3 text-xs text-white/40">
-              Host: {c.host} • User: {c.user || "N/A"} • IP: {c.ip || "N/A"}
-            </div>
-          </button>
-        ))}
+      <div className="border border-slate-800 rounded-xl overflow-hidden">
+        <div className="grid grid-cols-12 gap-0 bg-slate-900/60 border-b border-slate-800 px-4 py-2 text-xs text-slate-300">
+          <div className="col-span-3">Time</div>
+          <div className="col-span-5">Title</div>
+          <div className="col-span-2">Host</div>
+          <div className="col-span-2">User/IP</div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="p-6 text-slate-400 text-sm">
+            No timeline items match: <span className="text-white/90">{q}</span>
+          </div>
+        ) : (
+          filtered.map((it) => (
+            <button
+              key={it.id}
+              onClick={() => openDrawer(it)}
+              className="w-full text-left grid grid-cols-12 px-4 py-3 border-b border-slate-900 hover:bg-slate-900/40 transition"
+            >
+              <div className="col-span-3 text-xs text-slate-400">
+                {it.ts || "-"}
+              </div>
+              <div className="col-span-5 text-white">{it.title}</div>
+              <div className="col-span-2 text-slate-200">{it.host || "-"}</div>
+              <div className="col-span-2 text-slate-300 text-sm">
+                {(it.user || "-") + " / " + (it.ip || "-")}
+              </div>
+            </button>
+          ))
+        )}
       </div>
 
+      {/* RIGHT DRAWER */}
       <RightDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         title={selectedItem ? selectedItem.title : "Timeline Details"}
         severity={selectedItem?.severity}
+        item={selectedItem}
       >
         <AlertDrawerContent alert={selectedItem} />
       </RightDrawer>

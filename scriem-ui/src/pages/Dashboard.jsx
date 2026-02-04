@@ -84,6 +84,7 @@ export default function Dashboard() {
         onClose={() => setDrawerOpen(false)}
         title={selectedAlert ? selectedAlert.title : "Alert Details"}
         severity={selectedAlert?.severity}
+        item={selectedAlert}
       >
         <AlertDrawerContent alert={selectedAlert} />
       </RightDrawer>
