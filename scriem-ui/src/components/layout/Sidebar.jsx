@@ -1,3 +1,13 @@
+import { NavLink } from "react-router-dom";
+
+const navItems = [
+  { label: "Dashboard", to: "/" },
+  { label: "Alerts", to: "/alerts" },
+  { label: "Timeline", to: "/timeline" },
+  { label: "Cases", to: "/cases" },
+  { label: "Settings", to: "/settings" },
+];
+
 export default function Sidebar() {
   return (
     <aside className="w-64 shrink-0 border-r border-white/10 bg-black/25 backdrop-blur">
@@ -6,17 +16,21 @@ export default function Sidebar() {
       </div>
 
       <nav className="p-3 space-y-1 text-sm">
-        {["Dashboard", "Alerts", "Timeline", "Cases", "Settings"].map((item, i) => (
-          <button
-            key={item}
-            className={`w-full text-left px-3 py-2 rounded-xl transition ${
-              i === 0
-                ? "bg-cyan-500/10 text-cyan-200 ring-1 ring-cyan-500/25"
-                : "text-white/70 hover:bg-white/5 hover:text-white"
-            }`}
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `block w-full text-left px-3 py-2 rounded-xl transition ${
+                isActive
+                  ? "bg-cyan-500/10 text-cyan-200 ring-1 ring-cyan-500/25"
+                  : "text-white/70 hover:bg-white/5 hover:text-white"
+              }`
+            }
+            end={item.to === "/"}
           >
-            {item}
-          </button>
+            {item.label}
+          </NavLink>
         ))}
       </nav>
     </aside>
