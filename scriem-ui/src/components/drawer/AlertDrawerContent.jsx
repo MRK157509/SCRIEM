@@ -1,7 +1,57 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DrawerSection from "./DrawerSection";
 import DrawerTabs from "./DrawerTabs";
+
+function stableKey(item) {
+  if (item?.__scriemKey) return String(item.__scriemKey);
+
+  // ✅ NO timestamps
+  return String(
+    item?.id ||
+      item?._id ||
+      item?.alert_id ||
+      item?.event_id ||
+      item?.key ||
+      `${item?.title || "untitled"}|${item?.host || "nohost"}|${item?.user || "nouser"}|${item?.ip || "noip"}`
+  );
+}
+
+function readLS(key, fallback = "") {
+  try {
+    const v = localStorage.getItem(key);
+    return v == null ? fallback : v;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLS(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+function readJsonLS(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    if (!v) return fallback;
+    return JSON.parse(v);
+  } catch {
+    return fallback;
+  }
+}
+
+async function copyToClipboard(text) {
+  if (!text) return false;
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
 
 function Field({ label, value, mono = false }) {
   return (
@@ -37,146 +87,113 @@ function PivotButton({ onClick, disabled, children, title }) {
   );
 }
 
-async function copyToClipboard(text) {
-  if (!text) return false;
-
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch (_) {
-    // fall through
-  }
-
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.top = "-9999px";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    return ok;
-  } catch (_) {
-    return false;
-  }
-}
-
-function buildEvidenceSnapshot(alert) {
-  const lines = [];
-  lines.push("# SCRIEM Investigation Snapshot");
-  lines.push(`Title: ${alert?.title ?? "N/A"}`);
-  lines.push(`Severity: ${alert?.severity ?? "N/A"}`);
-  lines.push(`Status: ${alert?.status ?? "N/A"}`);
-  lines.push(`Host: ${alert?.host ?? "N/A"}`);
-  lines.push(`User: ${alert?.user ?? "N/A"}`);
-  lines.push(`IP: ${alert?.ip ?? "N/A"}`);
-
-  // If timeline events include a timestamp field, try a few common keys
-  const ts = alert?.ts || alert?.timestamp || alert?.time || alert?.event_time;
-  if (ts) lines.push(`Time: ${ts}`);
-
-  return lines.join("\n");
-}
+const DEFAULT_ACTIONS = {
+  triaged: false,
+  investigating: false,
+  escalated: false,
+  contained: false,
+  closed: false,
+};
 
 export default function AlertDrawerContent({ alert }) {
   const nav = useNavigate();
   if (!alert) return null;
 
-  // Prefer stable key if exists, else fallback (ok for now)
-  const alertKey = String(alert.id || alert._id || alert.alert_id || alert.title || "unknown");
-
-  const notesKey = `scriem.investigation.notes.${alertKey}`;
-  const actionsKey = `scriem.investigation.actions.${alertKey}`;
-
-  const entities = useMemo(
-    () => ({
-      user: alert.user || null,
-      ip: alert.ip || null,
-      host: alert.host || null,
-    }),
-    [alert]
+  const alertKey = useMemo(() => stableKey(alert), [alert]);
+  const notesKey = useMemo(
+    () => `scriem.investigation.notes.${alertKey}`,
+    [alertKey]
+  );
+  const actionsKey = useMemo(
+    () => `scriem.investigation.actions.${alertKey}`,
+    [alertKey]
+  );
+  const activityKey = useMemo(
+    () => `scriem.investigation.activity.${alertKey}`,
+    [alertKey]
   );
 
   const [notes, setNotes] = useState("");
-  const [actions, setActions] = useState(() => ({
-    triaged: false,
-    investigating: false,
-    escalated: false,
-    contained: false,
-    closed: false,
-  }));
+  const [actions, setActions] = useState(DEFAULT_ACTIONS);
+  const [activity, setActivity] = useState([]);
+  const [copyState, setCopyState] = useState("idle");
 
-  const [copyState, setCopyState] = useState("idle"); // idle | copied | failed
+  // ✅ Refs to survive StrictMode mount/unmount cycles
+  const notesRef = useRef("");
+  const dirtyRef = useRef(false); // ONLY write on cleanup if user edited
 
-  // Load persisted notes/actions when alert changes
+  // Load from storage when alert changes
   useEffect(() => {
-    try {
-      const savedNotes = localStorage.getItem(notesKey);
-      setNotes(savedNotes || "");
-    } catch {
-      setNotes("");
-    }
+    const n = readLS(notesKey, "");
+    setNotes(n);
+    notesRef.current = n;
 
-    try {
-      const savedActions = localStorage.getItem(actionsKey);
-      if (savedActions) setActions(JSON.parse(savedActions));
-      else
-        setActions({
-          triaged: false,
-          investigating: false,
-          escalated: false,
-          contained: false,
-          closed: false,
-        });
-    } catch {
-      setActions({
-        triaged: false,
-        investigating: false,
-        escalated: false,
-        contained: false,
-        closed: false,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alertKey]);
+    // ✅ This is critical: freshly loaded means NOT dirty
+    dirtyRef.current = false;
 
-  // Persist notes
+    setActions(readJsonLS(actionsKey, DEFAULT_ACTIONS));
+    setActivity(readJsonLS(activityKey, []));
+  }, [notesKey, actionsKey, activityKey]);
+
+  // Live updates from header action buttons
   useEffect(() => {
-    try {
-      localStorage.setItem(notesKey, notes);
-    } catch {
-      // ignore
-    }
-  }, [notesKey, notes]);
+    const handler = (e) => {
+      const k = e?.detail?.alertKey;
+      if (String(k) !== String(alertKey)) return;
+      setActions(readJsonLS(actionsKey, DEFAULT_ACTIONS));
+      setActivity(readJsonLS(activityKey, []));
+    };
+    window.addEventListener("scriem:investigation:update", handler);
+    return () => window.removeEventListener("scriem:investigation:update", handler);
+  }, [alertKey, actionsKey, activityKey]);
 
-  // Persist actions
+  // ✅ Flush on "page about to hide" — but ONLY if dirty
   useEffect(() => {
-    try {
-      localStorage.setItem(actionsKey, JSON.stringify(actions));
-    } catch {
-      // ignore
-    }
-  }, [actionsKey, actions]);
+    const flushIfDirty = () => {
+      if (!dirtyRef.current) return;
+      writeLS(notesKey, notesRef.current || "");
+      dirtyRef.current = false;
+    };
+
+    const onVis = () => {
+      if (document.visibilityState !== "visible") flushIfDirty();
+    };
+
+    window.addEventListener("beforeunload", flushIfDirty);
+    document.addEventListener("visibilitychange", onVis);
+
+    // ✅ StrictMode safe cleanup: do NOT overwrite unless dirty
+    return () => {
+      window.removeEventListener("beforeunload", flushIfDirty);
+      document.removeEventListener("visibilitychange", onVis);
+      flushIfDirty();
+    };
+  }, [notesKey]);
+
+  const onNotesChange = (v) => {
+    setNotes(v);
+    notesRef.current = v;
+    dirtyRef.current = true;
+
+    // ✅ Persist immediately (fast close cannot lose data)
+    writeLS(notesKey, v);
+  };
 
   const pivotTimeline = (value) => {
     if (!value) return;
     nav(`/timeline?q=${encodeURIComponent(value)}`);
   };
 
-  const handleCopySnapshot = async () => {
-    const text = buildEvidenceSnapshot(alert) + (notes ? `\n\nNotes:\n${notes}` : "");
-    const ok = await copyToClipboard(text);
-    setCopyState(ok ? "copied" : "failed");
-    window.setTimeout(() => setCopyState("idle"), 1200);
+  const entities = {
+    user: alert.user || null,
+    ip: alert.ip || null,
+    host: alert.host || null,
   };
 
-  const toggleAction = (k) => {
-    setActions((prev) => ({ ...prev, [k]: !prev[k] }));
+  const handleCopyNotes = async () => {
+    const ok = await copyToClipboard(notes || "");
+    setCopyState(ok ? "copied" : "failed");
+    window.setTimeout(() => setCopyState("idle"), 1200);
   };
 
   return (
@@ -241,35 +258,37 @@ export default function AlertDrawerContent({ alert }) {
               <DrawerSection title="Investigation Notes">
                 <textarea
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Write investigation notes... (persisted locally per alert)"
+                  onChange={(e) => onNotesChange(e.target.value)}
+                  placeholder="Notes persist per alert (localStorage)"
                   className="w-full min-h-[140px] px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white/90 outline-none focus:border-slate-600 resize-y"
                 />
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
-                    onClick={handleCopySnapshot}
+                    onClick={handleCopyNotes}
                     className="px-3 py-1 text-xs rounded-lg bg-slate-700/40 text-slate-200 border border-slate-600 hover:bg-slate-600/40 transition"
-                    title="Copy evidence snapshot + notes"
                   >
                     {copyState === "copied"
                       ? "Copied!"
                       : copyState === "failed"
                       ? "Copy failed"
-                      : "Copy Snapshot"}
+                      : "Copy Notes"}
                   </button>
 
                   <button
-                    onClick={() => setNotes("")}
+                    onClick={() => onNotesChange("")}
                     className="px-3 py-1 text-xs rounded-lg bg-slate-800/40 text-slate-200 border border-slate-700 hover:bg-slate-700/40 transition"
-                    title="Clear notes for this alert"
                   >
                     Clear Notes
                   </button>
                 </div>
+
+                <div className="mt-2 text-[11px] text-slate-500">
+                  Key: <span className="text-slate-300">{alertKey}</span>
+                </div>
               </DrawerSection>
 
-              <DrawerSection title="Action Log">
+              <DrawerSection title="Action Log (Wired)">
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     ["triaged", "Triaged"],
@@ -278,30 +297,47 @@ export default function AlertDrawerContent({ alert }) {
                     ["contained", "Contained"],
                     ["closed", "Closed"],
                   ].map(([key, label]) => (
-                    <button
+                    <div
                       key={key}
-                      onClick={() => toggleAction(key)}
                       className={[
-                        "px-3 py-2 rounded-lg border text-sm transition text-left",
-                        actions[key]
+                        "px-3 py-2 rounded-lg border text-left",
+                        actions?.[key]
                           ? "bg-green-500/15 border-green-500/30 text-green-200"
-                          : "bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800/40",
+                          : "bg-slate-900 border-slate-800 text-slate-200",
                       ].join(" ")}
-                      title="Toggle"
                     >
                       <div className="text-xs text-slate-400">{label}</div>
                       <div className="text-sm font-medium">
-                        {actions[key] ? "Yes" : "No"}
+                        {actions?.[key] ? "Yes" : "No"}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </DrawerSection>
 
-              <DrawerSection title="Evidence Snapshot">
-                <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
-                  {buildEvidenceSnapshot(alert)}
-                </pre>
+              <DrawerSection title="Activity Feed">
+                {activity?.length ? (
+                  <div className="space-y-2">
+                    {activity.map((a) => (
+                      <div
+                        key={a.id}
+                        className="p-3 rounded-lg border border-slate-800 bg-slate-900/40"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xs text-slate-400">
+                            {a.type || "event"}
+                          </div>
+                          <div className="text-[10px] text-slate-500">{a.ts}</div>
+                        </div>
+                        <div className="text-sm text-white/90 mt-1">
+                          {a.message}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-400">No activity yet.</div>
+                )}
               </DrawerSection>
             </>
           ),
