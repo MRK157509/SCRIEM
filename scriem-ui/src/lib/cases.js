@@ -1,119 +1,139 @@
 const LS_CASES = "scriem:cases:v1";
 
-function loadCases() {
+function safeParse(raw, fallback) {
   try {
-    return JSON.parse(localStorage.getItem(LS_CASES) || "[]");
+    return raw ? JSON.parse(raw) : fallback;
   } catch {
-    return [];
+    return fallback;
   }
 }
 
-function saveCases(cases) {
+function loadAll() {
+  return safeParse(localStorage.getItem(LS_CASES), []);
+}
+
+function saveAll(cases) {
   localStorage.setItem(LS_CASES, JSON.stringify(cases));
 }
 
-export function listCases() {
-  const cases = loadCases();
-  // newest first
-  return cases.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+function makeId() {
+  return `case-${Date.now()}`;
+}
+
+function normalizeItems(items) {
+  const arr = Array.isArray(items) ? items : [];
+  return arr.map((it) => ({
+    kind: it?.kind || (it?.title ? "alert" : "event"),
+    ...it,
+  }));
+}
+
+function stableItemKey(it) {
+  // best-effort de-dupe key
+  return String(
+    it?.__scriemKey ||
+      it?.id ||
+      it?._id ||
+      it?.alert_id ||
+      it?.event_id ||
+      `${it?.title || it?.event_type || "untitled"}|${it?.host || "nohost"}|${it?.user || "nouser"}|${
+        it?.created_at || it?.timestamp || ""
+      }`
+  );
+}
+
+export function getCases() {
+  return loadAll();
 }
 
 export function getCaseById(id) {
-  return loadCases().find((c) => c.id === id) || null;
+  return loadAll().find((c) => c.id === id) || null;
 }
 
-export function createCase({
-  title,
-  description = "",
-  severity = "MEDIUM",
-  status = "OPEN",
-  tags = [],
-  items = [],
-}) {
+export function createCase(payload = {}) {
   const now = new Date().toISOString();
-  const id = `CASE-${Date.now()}`;
+  const id = payload.id || makeId();
 
   const newCase = {
     id,
-    title: title || `Case ${id}`,
-    description,
-    severity,
-    status,
-    tags,
-    items, // alerts/events snapshots
-    created_at: now,
-    updated_at: now,
+    title: payload.title || `Investigation ${new Date().toLocaleString()}`,
+    description: payload.description || "",
+    severity: payload.severity || "MEDIUM",
+    status: payload.status || "OPEN",
+    createdAt: now,
+    updatedAt: now,
+    notes: payload.notes || "",
+    items: normalizeItems(payload.items),
     timeline: [
-      { at: now, action: "CASE_CREATED", note: "Case created" },
+      {
+        at: now,
+        type: "CASE_CREATED",
+        message: "Case created",
+      },
     ],
   };
 
-  const cases = loadCases();
-  cases.unshift(newCase);
-  saveCases(cases);
+  const all = loadAll();
+  all.unshift(newCase);
+  saveAll(all);
 
   return newCase;
 }
 
-export function updateCase(id, patch) {
-  const cases = loadCases();
-  const idx = cases.findIndex((c) => c.id === id);
+export function addItemsToCase(caseId, items) {
+  const all = loadAll();
+  const idx = all.findIndex((c) => c.id === caseId);
   if (idx === -1) return null;
 
-  const updated = {
-    ...cases[idx],
-    ...patch,
-    updated_at: new Date().toISOString(),
-  };
-  cases[idx] = updated;
-  saveCases(cases);
+  const c = all[idx];
+  const existing = new Set((c.items || []).map(stableItemKey));
 
+  const incoming = normalizeItems(items);
+  const toAdd = incoming.filter((it) => !existing.has(stableItemKey(it)));
+
+  if (toAdd.length === 0) return c;
+
+  const now = new Date().toISOString();
+  const updated = {
+    ...c,
+    items: [...toAdd, ...(c.items || [])],
+    updatedAt: now,
+    timeline: [
+      {
+        at: now,
+        type: "ITEMS_ADDED",
+        message: `Added ${toAdd.length} item(s)`,
+      },
+      ...(c.timeline || []),
+    ],
+  };
+
+  all[idx] = updated;
+  saveAll(all);
   return updated;
 }
 
-export function addCaseTimeline(id, entry) {
-  const c = getCaseById(id);
-  if (!c) return null;
+export function updateCaseNotes(caseId, notes) {
+  const all = loadAll();
+  const idx = all.findIndex((c) => c.id === caseId);
+  if (idx === -1) return null;
 
   const now = new Date().toISOString();
-  const next = {
-    ...c,
-    updated_at: now,
-    timeline: [{ at: now, ...entry }, ...(c.timeline || [])],
+  const updated = {
+    ...all[idx],
+    notes: String(notes || ""),
+    updatedAt: now,
+    timeline: [
+      {
+        at: now,
+        type: "NOTES_UPDATED",
+        message: "Notes updated",
+      },
+      ...(all[idx].timeline || []),
+    ],
   };
 
-  return updateCase(id, next);
-}
-
-export function addItemsToCase(id, items) {
-  const c = getCaseById(id);
-  if (!c) return null;
-
-  const existing = Array.isArray(c.items) ? c.items : [];
-  const incoming = Array.isArray(items) ? items : [];
-
-  // de-dup by kind+id/event_id+host+title/event_type
-  const keyOf = (it) =>
-    `${it.kind || ""}|${it.id ?? it.event_id ?? ""}|${it.host ?? ""}|${
-      it.title ?? it.event_type ?? ""
-    }|${it.created_at ?? it.timestamp ?? ""}`;
-
-  const seen = new Set(existing.map(keyOf));
-  const merged = [...existing];
-
-  for (const it of incoming) {
-    const k = keyOf(it);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    merged.unshift(it);
-  }
-
-  const updated = updateCase(id, { items: merged });
-  if (updated) {
-    addCaseTimeline(id, {
-      action: "ITEMS_ADDED",
-      note: `Added ${incoming.length} item(s)`,
-    });
-  }
+  all[idx] = updated;
+  saveAll(all);
   return updated;
 }

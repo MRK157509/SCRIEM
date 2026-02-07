@@ -5,8 +5,6 @@ import DrawerTabs from "./DrawerTabs";
 
 function stableKey(item) {
   if (item?.__scriemKey) return String(item.__scriemKey);
-
-  // ✅ NO timestamps
   return String(
     item?.id ||
       item?._id ||
@@ -42,6 +40,12 @@ function readJsonLS(key, fallback) {
   }
 }
 
+function writeJsonLS(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
 async function copyToClipboard(text) {
   if (!text) return false;
   try {
@@ -49,7 +53,7 @@ async function copyToClipboard(text) {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch (_) {}
+  } catch {}
   return false;
 }
 
@@ -95,47 +99,78 @@ const DEFAULT_ACTIONS = {
   closed: false,
 };
 
+function mkActivity(type, message) {
+  return {
+    id: `a-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    ts: new Date().toLocaleString(),
+    type,
+    message,
+  };
+}
+
+// ✅ Backend call (uses your existing /api proxy)
+async function patchAlert(alertId, payload) {
+  const res = await fetch(`/api/alerts/${alertId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {}
+
+  if (!res.ok) {
+    const msg = data?.detail || data?.error || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
 export default function AlertDrawerContent({ alert }) {
   const nav = useNavigate();
   if (!alert) return null;
 
+  const alertId = useMemo(() => alert?.id ?? alert?.alert_id ?? null, [alert]);
+
   const alertKey = useMemo(() => stableKey(alert), [alert]);
-  const notesKey = useMemo(
-    () => `scriem.investigation.notes.${alertKey}`,
-    [alertKey]
-  );
-  const actionsKey = useMemo(
-    () => `scriem.investigation.actions.${alertKey}`,
-    [alertKey]
-  );
-  const activityKey = useMemo(
-    () => `scriem.investigation.activity.${alertKey}`,
-    [alertKey]
-  );
+  const notesKey = useMemo(() => `scriem.investigation.notes.${alertKey}`, [alertKey]);
+  const actionsKey = useMemo(() => `scriem.investigation.actions.${alertKey}`, [alertKey]);
+  const activityKey = useMemo(() => `scriem.investigation.activity.${alertKey}`, [alertKey]);
 
   const [notes, setNotes] = useState("");
   const [actions, setActions] = useState(DEFAULT_ACTIONS);
   const [activity, setActivity] = useState([]);
   const [copyState, setCopyState] = useState("idle");
 
-  // ✅ Refs to survive StrictMode mount/unmount cycles
-  const notesRef = useRef("");
-  const dirtyRef = useRef(false); // ONLY write on cleanup if user edited
+  const [statusLive, setStatusLive] = useState(alert?.status || "OPEN");
+  const [syncState, setSyncState] = useState({ status: "idle", notes: "idle", err: "" });
 
-  // Load from storage when alert changes
+  const notesRef = useRef("");
+  const dirtyRef = useRef(false);
+
+  // debounce timer for autosave to DB
+  const notesTimerRef = useRef(null);
+
   useEffect(() => {
     const n = readLS(notesKey, "");
     setNotes(n);
     notesRef.current = n;
-
-    // ✅ This is critical: freshly loaded means NOT dirty
     dirtyRef.current = false;
 
     setActions(readJsonLS(actionsKey, DEFAULT_ACTIONS));
     setActivity(readJsonLS(activityKey, []));
-  }, [notesKey, actionsKey, activityKey]);
 
-  // Live updates from header action buttons
+    setStatusLive(alert?.status || "OPEN");
+    setSyncState({ status: "idle", notes: "idle", err: "" });
+
+    if (notesTimerRef.current) {
+      clearTimeout(notesTimerRef.current);
+      notesTimerRef.current = null;
+    }
+  }, [alert, notesKey, actionsKey, activityKey]);
+
   useEffect(() => {
     const handler = (e) => {
       const k = e?.detail?.alertKey;
@@ -147,7 +182,6 @@ export default function AlertDrawerContent({ alert }) {
     return () => window.removeEventListener("scriem:investigation:update", handler);
   }, [alertKey, actionsKey, activityKey]);
 
-  // ✅ Flush on "page about to hide" — but ONLY if dirty
   useEffect(() => {
     const flushIfDirty = () => {
       if (!dirtyRef.current) return;
@@ -162,22 +196,12 @@ export default function AlertDrawerContent({ alert }) {
     window.addEventListener("beforeunload", flushIfDirty);
     document.addEventListener("visibilitychange", onVis);
 
-    // ✅ StrictMode safe cleanup: do NOT overwrite unless dirty
     return () => {
       window.removeEventListener("beforeunload", flushIfDirty);
       document.removeEventListener("visibilitychange", onVis);
       flushIfDirty();
     };
   }, [notesKey]);
-
-  const onNotesChange = (v) => {
-    setNotes(v);
-    notesRef.current = v;
-    dirtyRef.current = true;
-
-    // ✅ Persist immediately (fast close cannot lose data)
-    writeLS(notesKey, v);
-  };
 
   const pivotTimeline = (value) => {
     if (!value) return;
@@ -196,6 +220,73 @@ export default function AlertDrawerContent({ alert }) {
     window.setTimeout(() => setCopyState("idle"), 1200);
   };
 
+  function logLocalAction(type, message, nextActionsPartial) {
+    const nextActions = { ...actions, ...(nextActionsPartial || {}) };
+    const nextActivity = [mkActivity(type, message), ...(activity || [])];
+
+    setActions(nextActions);
+    setActivity(nextActivity);
+
+    writeJsonLS(actionsKey, nextActions);
+    writeJsonLS(activityKey, nextActivity);
+
+    window.dispatchEvent(new CustomEvent("scriem:investigation:update", { detail: { alertKey } }));
+  }
+
+  async function syncStatus(nextStatus) {
+    if (!alertId) {
+      alert("Alert has no DB id (id/alert_id missing).");
+      return;
+    }
+    setSyncState((s) => ({ ...s, status: "saving", err: "" }));
+    try {
+      const updated = await patchAlert(alertId, { status: nextStatus });
+      setStatusLive(updated?.status || nextStatus);
+
+      if (nextStatus === "TRIAGED") logLocalAction("status", "Status → TRIAGED (DB)", { triaged: true });
+      if (nextStatus === "ESCALATED") logLocalAction("status", "Status → ESCALATED (DB)", { escalated: true });
+      if (nextStatus === "CLOSED") logLocalAction("status", "Status → CLOSED (DB)", { closed: true });
+      if (nextStatus === "OPEN") logLocalAction("status", "Status → OPEN (DB)", { triaged: false, escalated: false, closed: false });
+
+      setSyncState((s) => ({ ...s, status: "saved", err: "" }));
+      window.setTimeout(() => setSyncState((s) => ({ ...s, status: "idle" })), 800);
+    } catch (e) {
+      setSyncState((s) => ({ ...s, status: "failed", err: e?.message || "Sync failed" }));
+    }
+  }
+
+  function scheduleNotesDbSave() {
+    if (!alertId) return;
+
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+
+    notesTimerRef.current = setTimeout(async () => {
+      setSyncState((s) => ({ ...s, notes: "saving", err: "" }));
+      try {
+        await patchAlert(alertId, { notes: notesRef.current || "" });
+        logLocalAction("notes", "Notes autosaved to DB", {});
+        setSyncState((s) => ({ ...s, notes: "saved", err: "" }));
+        window.setTimeout(() => setSyncState((s) => ({ ...s, notes: "idle" })), 800);
+      } catch (e) {
+        setSyncState((s) => ({ ...s, notes: "failed", err: e?.message || "Sync failed" }));
+      } finally {
+        notesTimerRef.current = null;
+      }
+    }, 700);
+  }
+
+  const onNotesChange = (v) => {
+    setNotes(v);
+    notesRef.current = v;
+    dirtyRef.current = true;
+
+    // local safety net
+    writeLS(notesKey, v);
+
+    // DB autosave
+    scheduleNotesDbSave();
+  };
+
   return (
     <DrawerTabs
       tabs={[
@@ -205,8 +296,9 @@ export default function AlertDrawerContent({ alert }) {
             <DrawerSection title="Alert Summary">
               <Field label="Title" value={alert.title} />
               <Field label="Severity" value={alert.severity} />
-              <Field label="Status" value={alert.status} />
+              <Field label="Status" value={statusLive || alert.status} />
               <Field label="Host" value={alert.host} />
+              <Field label="DB ID" value={alertId ?? "N/A"} mono />
             </DrawerSection>
           ),
         },
@@ -219,31 +311,15 @@ export default function AlertDrawerContent({ alert }) {
               <Field label="Host" value={entities.host} />
 
               <div className="mt-3">
-                <div className="text-xs text-slate-400 mb-2">
-                  Pivot (Investigation)
-                </div>
+                <div className="text-xs text-slate-400 mb-2">Pivot (Investigation)</div>
                 <div className="flex flex-wrap gap-2">
-                  <PivotButton
-                    onClick={() => pivotTimeline(entities.ip)}
-                    disabled={!entities.ip}
-                    title="Search Timeline using this IP"
-                  >
+                  <PivotButton onClick={() => pivotTimeline(entities.ip)} disabled={!entities.ip} title="Search Timeline using this IP">
                     Search Timeline (IP)
                   </PivotButton>
-
-                  <PivotButton
-                    onClick={() => pivotTimeline(entities.user)}
-                    disabled={!entities.user}
-                    title="Search Timeline using this User"
-                  >
+                  <PivotButton onClick={() => pivotTimeline(entities.user)} disabled={!entities.user} title="Search Timeline using this User">
                     Search Timeline (User)
                   </PivotButton>
-
-                  <PivotButton
-                    onClick={() => pivotTimeline(entities.host)}
-                    disabled={!entities.host}
-                    title="Search Timeline using this Host"
-                  >
+                  <PivotButton onClick={() => pivotTimeline(entities.host)} disabled={!entities.host} title="Search Timeline using this Host">
                     Search Timeline (Host)
                   </PivotButton>
                 </div>
@@ -255,11 +331,36 @@ export default function AlertDrawerContent({ alert }) {
           label: "Investigate",
           content: (
             <>
-              <DrawerSection title="Investigation Notes">
+              <DrawerSection title="SOC Actions (Backend Synced)">
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => syncStatus("TRIAGED")} className="px-3 py-2 text-xs rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-200 hover:bg-blue-500/20 transition">
+                    Triage
+                  </button>
+                  <button onClick={() => syncStatus("ESCALATED")} className="px-3 py-2 text-xs rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-200 hover:bg-purple-500/20 transition">
+                    Escalate
+                  </button>
+                  <button onClick={() => syncStatus("CLOSED")} className="px-3 py-2 text-xs rounded-lg bg-slate-500/15 border border-slate-500/30 text-slate-200 hover:bg-slate-500/20 transition">
+                    Close
+                  </button>
+                  <button onClick={() => syncStatus("OPEN")} className="px-3 py-2 text-xs rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-200 hover:bg-cyan-500/20 transition">
+                    Reopen
+                  </button>
+
+                  <div className="ml-auto flex items-center gap-2 text-xs">
+                    {syncState.status === "saving" && <span className="text-white/60">Saving status…</span>}
+                    {syncState.status === "saved" && <span className="text-green-300">Status saved</span>}
+                    {syncState.status === "failed" && <span className="text-red-300">Status failed</span>}
+                  </div>
+                </div>
+
+                {syncState.err ? <div className="mt-2 text-xs text-red-300">Backend error: {syncState.err}</div> : null}
+              </DrawerSection>
+
+              <DrawerSection title="Investigation Notes (Autosaved to DB)">
                 <textarea
                   value={notes}
                   onChange={(e) => onNotesChange(e.target.value)}
-                  placeholder="Notes persist per alert (localStorage)"
+                  placeholder="Notes are saved locally AND autosaved to DB."
                   className="w-full min-h-[140px] px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white/90 outline-none focus:border-slate-600 resize-y"
                 />
 
@@ -268,11 +369,7 @@ export default function AlertDrawerContent({ alert }) {
                     onClick={handleCopyNotes}
                     className="px-3 py-1 text-xs rounded-lg bg-slate-700/40 text-slate-200 border border-slate-600 hover:bg-slate-600/40 transition"
                   >
-                    {copyState === "copied"
-                      ? "Copied!"
-                      : copyState === "failed"
-                      ? "Copy failed"
-                      : "Copy Notes"}
+                    {copyState === "copied" ? "Copied!" : copyState === "failed" ? "Copy failed" : "Copy Notes"}
                   </button>
 
                   <button
@@ -281,6 +378,12 @@ export default function AlertDrawerContent({ alert }) {
                   >
                     Clear Notes
                   </button>
+
+                  <div className="ml-auto flex items-center gap-2 text-xs">
+                    {syncState.notes === "saving" && <span className="text-white/60">Saving notes…</span>}
+                    {syncState.notes === "saved" && <span className="text-green-300">Notes saved</span>}
+                    {syncState.notes === "failed" && <span className="text-red-300">Notes failed</span>}
+                  </div>
                 </div>
 
                 <div className="mt-2 text-[11px] text-slate-500">
@@ -288,7 +391,7 @@ export default function AlertDrawerContent({ alert }) {
                 </div>
               </DrawerSection>
 
-              <DrawerSection title="Action Log (Wired)">
+              <DrawerSection title="Action Log (Local Mirror)">
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     ["triaged", "Triaged"],
@@ -307,9 +410,7 @@ export default function AlertDrawerContent({ alert }) {
                       ].join(" ")}
                     >
                       <div className="text-xs text-slate-400">{label}</div>
-                      <div className="text-sm font-medium">
-                        {actions?.[key] ? "Yes" : "No"}
-                      </div>
+                      <div className="text-sm font-medium">{actions?.[key] ? "Yes" : "No"}</div>
                     </div>
                   ))}
                 </div>
@@ -319,19 +420,12 @@ export default function AlertDrawerContent({ alert }) {
                 {activity?.length ? (
                   <div className="space-y-2">
                     {activity.map((a) => (
-                      <div
-                        key={a.id}
-                        className="p-3 rounded-lg border border-slate-800 bg-slate-900/40"
-                      >
+                      <div key={a.id} className="p-3 rounded-lg border border-slate-800 bg-slate-900/40">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-xs text-slate-400">
-                            {a.type || "event"}
-                          </div>
+                          <div className="text-xs text-slate-400">{a.type || "event"}</div>
                           <div className="text-[10px] text-slate-500">{a.ts}</div>
                         </div>
-                        <div className="text-sm text-white/90 mt-1">
-                          {a.message}
-                        </div>
+                        <div className="text-sm text-white/90 mt-1">{a.message}</div>
                       </div>
                     ))}
                   </div>
@@ -347,7 +441,7 @@ export default function AlertDrawerContent({ alert }) {
           content: (
             <DrawerSection title="Raw JSON">
               <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
-                {JSON.stringify(alert, null, 2)}
+                {JSON.stringify({ ...alert, status_live: statusLive }, null, 2)}
               </pre>
             </DrawerSection>
           ),
