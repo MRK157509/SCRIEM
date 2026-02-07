@@ -1,24 +1,23 @@
-from fastapi import FastAPI
-from .database import engine
-from .models import Base
-from app.routers import events
-from app.routers import alerts, timeline
-from app.routers import alerts
-
 import logging
+from fastapi import FastAPI
+
+from app.database import engine
+from app.models import Base
+
+from app.routers import alerts, timeline, events
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("scriem")
 
+# Create DB tables (dev)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SCRIEM")
 
+# Routers
 app.include_router(alerts.router)
 app.include_router(timeline.router)
-
 app.include_router(events.router)
-
-app.include_router(alerts.router)
 
 
 @app.get("/")
