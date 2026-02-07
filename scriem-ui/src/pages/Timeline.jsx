@@ -1,135 +1,185 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-
+import { useLocation, useNavigate } from "react-router-dom";
 import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
+import { searchTimeline } from "../lib/api";
+
+const LS_LAST_Q = "scriem:timeline:lastQuery";
+
+function makeStableKey(item) {
+  return String(
+    item?.id ||
+      item?._id ||
+      item?.alert_id ||
+      item?.event_id ||
+      `${item?.title || item?.event_type || "untitled"}|${item?.host || "nohost"}|${
+        item?.user || "nouser"
+      }|${item?.ts || item?.timestamp || ""}`
+  );
+}
 
 export default function Timeline() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const initialQ = searchParams.get("q") || "";
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const [q, setQ] = useState(initialQ);
+  const q = useMemo(() => {
+    const sp = new URLSearchParams(location.search);
+    return (sp.get("q") || "").trim();
+  }, [location.search]);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [events, setEvents] = useState([]);
+  const [alerts, setAlerts] = useState([]);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
-  // Demo timeline items (replace with your API fetch later)
-  const [items, setItems] = useState(() => [
-    {
-      id: "evt-1",
-      title: "Suspicious Login",
-      severity: "high",
-      status: "open",
-      host: "host-01",
-      user: "alice",
-      ip: "10.0.0.5",
-      ts: new Date().toISOString(),
-      kind: "auth",
-    },
-    {
-      id: "evt-2",
-      title: "PowerShell Execution",
-      severity: "medium",
-      status: "open",
-      host: "host-02",
-      user: "bob",
-      ip: "192.168.1.20",
-      ts: new Date().toISOString(),
-      kind: "endpoint",
-    },
-  ]);
-
-  // Keep URL query param in sync with input (shareable pivots)
-  useEffect(() => {
-    const cur = searchParams.get("q") || "";
-    if (cur !== q) setQ(cur);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
-
-  const filtered = useMemo(() => {
-    const query = (q || "").trim().toLowerCase();
-    if (!query) return items;
-
-    return items.filter((it) =>
-      JSON.stringify(it).toLowerCase().includes(query)
-    );
-  }, [items, q]);
-
   const openDrawer = (item) => {
-    setSelectedItem(item);
+    const stableKey = makeStableKey(item);
+    setSelectedItem({ ...item, __scriemKey: stableKey });
     setDrawerOpen(true);
   };
 
-  const onChangeQ = (next) => {
-    setQ(next);
-    const trimmed = (next || "").trim();
-    if (!trimmed) {
-      searchParams.delete("q");
-      setSearchParams(searchParams, { replace: true });
-      return;
+  // ✅ Restore last query if user lands on /timeline with no ?q=
+  useEffect(() => {
+    if (q) return;
+    const last = (localStorage.getItem(LS_LAST_Q) || "").trim();
+    const fallback = "HIGH";
+    const next = last || fallback;
+    navigate(`/timeline?q=${encodeURIComponent(next)}`, { replace: true });
+  }, [q, navigate]);
+
+  // ✅ Fetch whenever q changes
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      setError("");
+
+      if (!q) {
+        setEvents([]);
+        setAlerts([]);
+        return;
+      }
+
+      localStorage.setItem(LS_LAST_Q, q);
+
+      setLoading(true);
+      try {
+        const data = await searchTimeline(q);
+        if (cancelled) return;
+
+        setEvents(Array.isArray(data?.events) ? data.events : []);
+        setAlerts(Array.isArray(data?.alerts) ? data.alerts : []);
+      } catch (e) {
+        if (cancelled) return;
+        setEvents([]);
+        setAlerts([]);
+        setError(e?.message || "Timeline search failed");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-    setSearchParams({ q: trimmed }, { replace: true });
-  };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [q]);
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Timeline</h1>
-          <div className="text-sm text-slate-400">
-            Pivot search: try IP, user, host, hash, domain
-          </div>
+    <div className="space-y-5">
+      <div>
+        <div className="text-white text-2xl font-semibold">Timeline</div>
+        <div className="text-white/50 text-sm">
+          Search results for: <span className="text-white/80">{q || "—"}</span>
         </div>
-
-        <input
-          value={q}
-          onChange={(e) => onChangeQ(e.target.value)}
-          placeholder="Search Timeline (e.g., 10.0.0.5, alice, host-01)"
-          className="w-[420px] max-w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white outline-none focus:border-slate-600"
-        />
       </div>
 
+      {loading && <div className="text-white/60 text-sm">Loading…</div>}
+      {error && <div className="text-red-400 text-sm">{error}</div>}
+
       <div className="border border-slate-800 rounded-xl overflow-hidden">
-        <div className="grid grid-cols-12 gap-0 bg-slate-900/60 border-b border-slate-800 px-4 py-2 text-xs text-slate-300">
-          <div className="col-span-3">Time</div>
-          <div className="col-span-5">Title</div>
-          <div className="col-span-2">Host</div>
-          <div className="col-span-2">User/IP</div>
+        <div className="px-4 py-3 bg-slate-900/40 border-b border-slate-800 text-white/80 text-sm">
+          Matched Alerts ({alerts.length})
         </div>
 
-        {filtered.length === 0 ? (
-          <div className="p-6 text-slate-400 text-sm">
-            No timeline items match: <span className="text-white/90">{q}</span>
-          </div>
+        {alerts.length === 0 ? (
+          <div className="px-4 py-6 text-white/60">No alerts matched.</div>
         ) : (
-          filtered.map((it) => (
-            <button
-              key={it.id}
-              onClick={() => openDrawer(it)}
-              className="w-full text-left grid grid-cols-12 px-4 py-3 border-b border-slate-900 hover:bg-slate-900/40 transition"
-            >
-              <div className="col-span-3 text-xs text-slate-400">
-                {it.ts || "-"}
+          <div className="divide-y divide-slate-900">
+            {alerts.map((a) => (
+              <div
+                key={`a-${a.id ?? a.event_id}-${a.created_at ?? ""}`}
+                className="px-4 py-3 hover:bg-slate-900/40 transition flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="text-white truncate">{a.title || "Alert"}</div>
+                  <div className="text-xs text-white/50">
+                    {a.severity} • {a.status} • {a.host}
+                  </div>
+                </div>
+                <button
+                  onClick={() => openDrawer(a)}
+                  className="shrink-0 px-3 py-1 text-xs rounded-lg bg-slate-700/40 text-slate-200 border border-slate-600 hover:bg-slate-600/40 transition"
+                >
+                  View
+                </button>
               </div>
-              <div className="col-span-5 text-white">{it.title}</div>
-              <div className="col-span-2 text-slate-200">{it.host || "-"}</div>
-              <div className="col-span-2 text-slate-300 text-sm">
-                {(it.user || "-") + " / " + (it.ip || "-")}
-              </div>
-            </button>
-          ))
+            ))}
+          </div>
         )}
       </div>
 
-      {/* RIGHT DRAWER */}
+      <div className="border border-slate-800 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-slate-900/40 border-b border-slate-800 text-white/80 text-sm">
+          Matched Events ({events.length})
+        </div>
+
+        {events.length === 0 ? (
+          <div className="px-4 py-6 text-white/60">No events matched.</div>
+        ) : (
+          <div className="divide-y divide-slate-900">
+            {events.map((e) => (
+              <div
+                key={`e-${e.id ?? e.event_id}-${e.created_at ?? ""}`}
+                className="px-4 py-3 hover:bg-slate-900/40 transition flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="text-white truncate">
+                    {e.event_type || "Event"} • {e.action || "action"}
+                  </div>
+                  <div className="text-xs text-white/50">
+                    {e.host} • {e.user || "N/A"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => openDrawer(e)}
+                  className="shrink-0 px-3 py-1 text-xs rounded-lg bg-slate-700/40 text-slate-200 border border-slate-600 hover:bg-slate-600/40 transition"
+                >
+                  View
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <RightDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        title={selectedItem ? selectedItem.title : "Timeline Details"}
+        title={selectedItem?.title || selectedItem?.event_type || "Timeline Item"}
         severity={selectedItem?.severity}
         item={selectedItem}
       >
-        <AlertDrawerContent alert={selectedItem} />
+        {selectedItem?.title ? (
+          <AlertDrawerContent alert={selectedItem} />
+        ) : (
+          <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
+            {JSON.stringify(selectedItem, null, 2)}
+          </pre>
+        )}
       </RightDrawer>
     </div>
   );

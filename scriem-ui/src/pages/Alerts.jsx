@@ -1,141 +1,108 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
+import { fetchAlerts } from "../lib/api";
+
+/* ---------------- Stable Key (NO timestamps) ---------------- */
+function makeStableKey(alert) {
+  return String(
+    alert?.id ||
+      alert?._id ||
+      alert?.alert_id ||
+      alert?.event_id ||
+      alert?.key ||
+      `${alert?.title || "untitled"}|${alert?.host || "nohost"}|${alert?.user || "nouser"}|${alert?.ip || "noip"}`
+  );
+}
 
 export default function Alerts() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
 
-  const rows = [
-    {
-      id: "A-1001",
-      title: "Suspicious PowerShell Execution",
-      severity: "High",
-      status: "Open",
-      host: "WIN-ACCT-02",
-      user: "alice",
-      ip: "10.10.12.8",
-      time: "2m ago",
-    },
-    {
-      id: "A-1002",
-      title: "Multiple Failed Logins",
-      severity: "Medium",
-      status: "Triage",
-      host: "AD-DC-01",
-      user: "bob",
-      ip: "172.16.2.4",
-      time: "12m ago",
-    },
-    {
-      id: "A-1003",
-      title: "Credential Dumping Pattern",
-      severity: "Critical",
-      status: "Open",
-      host: "FIN-SRV-01",
-      user: "svc-fin",
-      ip: "10.0.0.5",
-      time: "25m ago",
-    },
-  ];
+  /* ---------------- Fetch Alerts from Backend ---------------- */
+  useEffect(() => {
+    fetchAlerts()
+      .then((data) => {
+        // Supports either { alerts: [...] } or raw array
+        setRows(data.alerts || data || []);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setError(err.message || "Failed to load alerts");
+        setLoading(false);
+      });
+  }, []);
 
+  /* ---------------- Drawer Open ---------------- */
   const openDrawer = (alert) => {
-    setSelectedAlert(alert);
+    const stableKey = makeStableKey(alert);
+    setSelectedAlert({ ...alert, __scriemKey: stableKey });
     setDrawerOpen(true);
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-white text-2xl font-semibold">Alerts</div>
-          <div className="text-white/50 text-sm">Triage Workspace</div>
-        </div>
-
-        <div className="flex gap-2">
-          <button className="h-10 px-4 rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition">
-            Save View
-          </button>
-          <button className="h-10 px-4 rounded-xl bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-500/30 hover:bg-cyan-500/25 transition">
-            Export
-          </button>
-        </div>
+    <div className="p-6 space-y-4">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-semibold text-white">Alerts</h1>
+        <div className="text-sm text-slate-400">Live alert feed</div>
       </div>
 
-      <div className="p-3 rounded-2xl border border-white/10 bg-white/5 flex flex-wrap gap-2 items-center">
-        <select className="h-9 px-3 rounded-xl bg-black/40 border border-white/10 text-white/70 text-sm">
-          <option>Status: Any</option>
-          <option>Open</option>
-          <option>Triage</option>
-          <option>Closed</option>
-        </select>
+      {/* Loading / Error */}
+      {loading && (
+        <div className="text-slate-400 text-sm mb-2">Loading alerts...</div>
+      )}
 
-        <select className="h-9 px-3 rounded-xl bg-black/40 border border-white/10 text-white/70 text-sm">
-          <option>Severity: Any</option>
-          <option>Critical</option>
-          <option>High</option>
-          <option>Medium</option>
-          <option>Low</option>
-        </select>
-
-        <input
-          className="h-9 w-64 px-3 rounded-xl bg-black/40 border border-white/10 text-white/70 text-sm"
-          placeholder="Search host / user / IP / title…"
-        />
-
-        <div className="ml-auto flex gap-2">
-          <button className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition text-sm">
-            Clear Filters
-          </button>
+      {error && (
+        <div className="text-red-400 text-sm mb-2">
+          Error loading alerts: {error}
         </div>
-      </div>
+      )}
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/10 text-white/80 text-sm">
-          Latest Alerts
+      {/* Alerts Table */}
+      <div className="border border-slate-800 rounded-xl overflow-hidden">
+        <div className="grid grid-cols-12 bg-slate-900/60 border-b border-slate-800 px-4 py-2 text-xs text-slate-300">
+          <div className="col-span-5">Title</div>
+          <div className="col-span-2">Severity</div>
+          <div className="col-span-2">Status</div>
+          <div className="col-span-2">Host</div>
+          <div className="col-span-1 text-right">Open</div>
         </div>
 
-        <table className="w-full text-sm">
-          <thead className="bg-black/30 text-white/50">
-            <tr>
-              <th className="text-left px-4 py-2 w-10">
-                <input type="checkbox" />
-              </th>
-              <th className="text-left px-4 py-2">Severity</th>
-              <th className="text-left px-4 py-2">Status</th>
-              <th className="text-left px-4 py-2">Title</th>
-              <th className="text-left px-4 py-2">Host</th>
-              <th className="text-left px-4 py-2">Time</th>
-            </tr>
-          </thead>
-
-          <tbody className="text-white/80">
-            {rows.map((r) => (
-              <tr
-                key={r.id}
-                onClick={() => openDrawer(r)}
-                className="border-t border-white/5 hover:bg-white/5 cursor-pointer transition"
-              >
-                <td className="px-4 py-3">
-                  <input type="checkbox" onClick={(e) => e.stopPropagation()} />
-                </td>
-                <td className="px-4 py-3">
-                  <span className="px-2 py-1 rounded-lg border border-white/10 bg-black/30 text-xs">
-                    {r.severity}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{r.status}</td>
-                <td className="px-4 py-3">{r.title}</td>
-                <td className="px-4 py-3">{r.host}</td>
-                <td className="px-4 py-3 text-white/60">{r.time}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {rows.length === 0 && !loading ? (
+          <div className="p-6 text-slate-400 text-sm">No alerts found.</div>
+        ) : (
+          rows.map((r) => (
+            <div
+              key={r.id || r.alert_id || r._id}
+              className="grid grid-cols-12 px-4 py-3 border-b border-slate-900 hover:bg-slate-900/40 transition"
+            >
+              <div className="col-span-5 text-white">{r.title}</div>
+              <div className="col-span-2 text-slate-200">{r.severity}</div>
+              <div className="col-span-2 text-slate-200">{r.status}</div>
+              <div className="col-span-2 text-slate-200">{r.host}</div>
+              <div className="col-span-1 text-right">
+                <button
+                  onClick={() => openDrawer(r)}
+                  className="px-3 py-1 text-xs rounded-lg bg-slate-700/40 text-slate-200 border border-slate-600 hover:bg-slate-600/40 transition"
+                >
+                  View
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
+      {/* Right Drawer */}
       <RightDrawer
         isOpen={drawerOpen}
+        onOpen={() => setDrawerOpen(true)}
         onClose={() => setDrawerOpen(false)}
         title={selectedAlert ? selectedAlert.title : "Alert Details"}
         severity={selectedAlert?.severity}
