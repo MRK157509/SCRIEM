@@ -1,6 +1,6 @@
-import { Routes, Route } from "react-router-dom";
-
+import { Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
+
 import Dashboard from "./pages/Dashboard";
 import Alerts from "./pages/Alerts";
 import Timeline from "./pages/Timeline";
@@ -10,15 +10,17 @@ import CaseDetail from "./pages/CaseDetail";
 
 export default function App() {
   return (
-    <AppLayout>
-      <Routes>
+    <Routes>
+      <Route element={<AppLayout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/timeline" element={<Timeline />} />
 
         <Route path="/cases" element={<Cases />} />
         <Route path="/cases/:id" element={<CaseDetail />} />
-      </Routes>
-    </AppLayout>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   );
 }
