@@ -1,66 +1,56 @@
+// src/pages/CaseDetail.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+
+import RightDrawer from "../components/drawer/RightDrawer";
+import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
+
+import { getCaseById, updateCaseNotes, addItemsToCase } from "../lib/cases";
 import { canCopyEvidenceJson, canSeeRaw } from "../lib/rbac";
 
-const LS_CASES = "scriem:cases:v1";
-
-// ---------- safe localStorage helpers ----------
-function readCases() {
+function safeJsonParse(s, fallback) {
   try {
-    const raw = localStorage.getItem(LS_CASES);
-    const data = raw ? JSON.parse(raw) : [];
-    return Array.isArray(data) ? data : [];
+    return JSON.parse(s);
   } catch {
-    return [];
+    return fallback;
   }
 }
 
-function writeCases(next) {
-  try {
-    localStorage.setItem(LS_CASES, JSON.stringify(next));
-  } catch {}
+function isAlert(item) {
+  return !!item?.title;
 }
 
-function getCaseById(id) {
-  const cases = readCases();
-  return cases.find((c) => String(c.id) === String(id)) || null;
+function evidenceTitle(item) {
+  if (!item) return "Evidence";
+  if (isAlert(item)) return item.title || "Alert";
+  return `${item.event_type || "Event"} • ${item.action || "action"}`;
 }
 
-function updateCaseNotes(id, notes) {
-  const cases = readCases();
-  const next = cases.map((c) =>
-    String(c.id) === String(id)
-      ? { ...c, notes: String(notes || ""), updated_at: new Date().toISOString() }
-      : c
-  );
-  writeCases(next);
+function evidenceMeta(item) {
+  const sev = item?.severity ? `severity: ${item.severity}` : "";
+  const st = item?.status ? `status: ${item.status}` : "";
+  const host = item?.host ? `host: ${item.host}` : "";
+  return [sev, st, host].filter(Boolean).join(" • ");
 }
 
-// ---------- UI helpers ----------
-function sevBadge(sev) {
-  const s = String(sev || "").toLowerCase();
-  if (s === "critical") return "bg-red-600/20 text-red-300 border-red-500/30";
-  if (s === "high") return "bg-orange-600/20 text-orange-300 border-orange-500/30";
-  if (s === "medium") return "bg-yellow-600/20 text-yellow-300 border-yellow-500/30";
-  if (s === "low") return "bg-green-600/20 text-green-300 border-green-500/30";
-  return "bg-slate-700/40 text-slate-200 border-slate-600/60";
-}
-
-function statusBadge(st) {
-  const s = String(st || "").toUpperCase();
-  if (s === "OPEN") return "bg-slate-700/40 text-slate-200 border-slate-600/60";
-  if (s === "TRIAGED") return "bg-yellow-500/15 text-yellow-200 border-yellow-500/30";
-  if (s === "ESCALATED") return "bg-orange-500/15 text-orange-200 border-orange-500/30";
-  if (s === "CLOSED") return "bg-green-500/15 text-green-200 border-green-500/30";
-  return "bg-slate-800/40 text-slate-300 border-slate-700/60";
-}
-
-async function copyText(text) {
+async function copyToClipboard(text) {
   try {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    return false;
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -68,25 +58,74 @@ export default function CaseDetail() {
   const { id } = useParams();
   const nav = useNavigate();
 
-  const [c, setC] = useState(null);
+  const [caze, setCaze] = useState(null);
+  const [selected, setSelected] = useState(null);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerItem, setDrawerItem] = useState(null);
+
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const allowCopyJson = canCopyEvidenceJson(); // ✅ ADMIN only
-  const allowRaw = canSeeRaw(); // ✅ ADMIN only
-
+  // Load case
   useEffect(() => {
-    const next = getCaseById(id);
-    setC(next || null);
-    setNotes(next?.notes || "");
+    const c = getCaseById(id);
+    setCaze(c || null);
+    setNotes(c?.notes || "");
+    // default select first evidence
+    const first = (c?.items || [])[0] || null;
+    setSelected(first);
   }, [id]);
 
-  const evidence = useMemo(() => (c?.items && Array.isArray(c.items) ? c.items : []), [c]);
+  const items = useMemo(() => caze?.items || [], [caze]);
 
-  if (!c) {
+  const openEvidence = (item) => {
+    setDrawerItem(item);
+    setDrawerOpen(true);
+  };
+
+  const pivotToTimeline = (item) => {
+    // Keep it simple: host/user/sev/title search
+    const q =
+      item?.host ||
+      item?.user ||
+      item?.severity ||
+      item?.title ||
+      item?.event_type ||
+      "";
+    if (!q) return;
+    nav(`/timeline?q=${encodeURIComponent(String(q))}`);
+  };
+
+  const handleCopyJson = async (item) => {
+    // ✅ RBAC: only ADMIN can copy evidence JSON
+    if (!canCopyEvidenceJson()) return;
+    const ok = await copyToClipboard(JSON.stringify(item, null, 2));
+    alert(ok ? "✅ Evidence JSON copied" : "❌ Copy failed");
+  };
+
+  const saveNotes = async () => {
+    setSaving(true);
+    try {
+      updateCaseNotes(id, notes);
+      // refresh local
+      const c = getCaseById(id);
+      setCaze(c || null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!caze) {
     return (
-      <div className="text-white/60 text-sm border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
-        Case not found.
+      <div className="text-white/70">
+        Case not found.{" "}
+        <button
+          className="underline text-cyan-300"
+          onClick={() => nav("/cases")}
+        >
+          Go back
+        </button>
       </div>
     );
   }
@@ -96,148 +135,185 @@ export default function CaseDetail() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-white text-2xl font-semibold">{c.title}</div>
-          <div className="text-white/50 text-sm mt-1">
-            {c.id} • Created{" "}
-            {c.created_at ? new Date(c.created_at).toLocaleString() : "—"}
+          <div className="text-white text-2xl font-semibold">{caze.title}</div>
+          <div className="text-white/50 text-sm">
+            {caze.id} • Created {caze.created_at || "—"}
           </div>
-
-          {c.description ? (
-            <div className="text-white/70 text-sm mt-2 whitespace-pre-wrap">
-              {c.description}
+          {caze.description && (
+            <div className="text-white/70 text-sm mt-2 whitespace-pre-line">
+              {caze.description}
             </div>
-          ) : null}
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 text-xs rounded-md border ${statusBadge(c.status)}`}>
-            {String(c.status || "OPEN").toUpperCase()}
+          <span className="px-3 py-1 rounded-xl border border-white/10 bg-white/5 text-white/70 text-sm">
+            {caze.status || "OPEN"}
           </span>
-          <span className={`px-2 py-0.5 text-xs rounded-md border ${sevBadge(c.severity)}`}>
-            {String(c.severity || "MEDIUM").toUpperCase()}
+          <span className="px-3 py-1 rounded-xl border border-white/10 bg-white/5 text-white/70 text-sm">
+            {caze.severity || "MEDIUM"}
           </span>
-
           <button
             onClick={() => nav("/cases")}
-            className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition"
+            className="h-10 px-4 rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition"
           >
             Back
           </button>
         </div>
       </div>
 
-      {/* Body grid */}
+      {/* 3-column layout */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Evidence */}
-        <div className="xl:col-span-2 border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-white font-semibold">Evidence ({evidence.length})</div>
-              <div className="text-white/50 text-xs">pin-style actions</div>
+        {/* Evidence list */}
+        <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-white font-semibold">
+              Evidence ({items.length})
             </div>
+            <div className="text-xs text-white/40">pin-style actions</div>
           </div>
 
-          <div className="mt-4 space-y-3 max-h-[520px] overflow-y-auto pr-2">
-            {evidence.length === 0 ? (
-              <div className="text-white/50 text-sm">No evidence added yet.</div>
+          <div className="mt-3 space-y-2 max-h-[560px] overflow-y-auto pr-1">
+            {items.length === 0 ? (
+              <div className="text-white/50 text-sm">No evidence added.</div>
             ) : (
-              evidence.map((it, idx) => {
-                const isAlert = it?.title != null;
-                const title = isAlert
-                  ? it.title
-                  : `${it?.event_type || "Event"} • ${it?.action || "action"}`;
-
+              items.map((it, idx) => {
+                const active = selected === it;
                 return (
-                  <div
-                    key={it?.id ?? it?.event_id ?? `${idx}`}
-                    className="border border-slate-800 rounded-xl bg-black/20 p-3"
+                  <button
+                    key={idx}
+                    onClick={() => setSelected(it)}
+                    className={[
+                      "w-full text-left p-3 rounded-xl border transition",
+                      active
+                        ? "border-cyan-500/40 bg-cyan-500/10"
+                        : "border-slate-800 bg-black/20 hover:bg-white/5",
+                    ].join(" ")}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-white text-sm font-medium truncate">{title}</div>
-                        <div className="text-xs text-white/50 mt-1">
-                          {it?.host ? `host: ${it.host}` : "host: —"}
-                          {it?.user ? ` • user: ${it.user}` : ""}
-                          {it?.severity ? ` • severity: ${it.severity}` : ""}
-                          {it?.status ? ` • status: ${it.status}` : ""}
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => {
-                            if (it?.host) nav(`/timeline?q=${encodeURIComponent(`host:${it.host}`)}`);
-                            else nav(`/timeline?q=${encodeURIComponent(title)}`);
-                          }}
-                          className="px-3 py-1 text-xs rounded-lg border border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
-                        >
-                          Pivot to Timeline
-                        </button>
-
-                        {/* ✅ Copy JSON: ADMIN only */}
-                        {allowCopyJson ? (
-                          <button
-                            onClick={async () => {
-                              const ok = await copyText(JSON.stringify(it, null, 2));
-                              alert(ok ? "✅ Evidence JSON copied" : "Copy failed");
-                            }}
-                            className="px-3 py-1 text-xs rounded-lg border border-slate-600 bg-slate-700/30 text-slate-200 hover:bg-slate-600/40"
-                          >
-                            Copy JSON
-                          </button>
-                        ) : null}
-                      </div>
+                    <div className="text-white text-sm font-medium">
+                      {isAlert(it) ? "🔔 " : "🧾 "}
+                      {evidenceTitle(it)}
                     </div>
-
-                    {/* ✅ Raw: ADMIN only */}
-                    {allowRaw ? (
-                      <div className="mt-3 border border-slate-800 rounded-lg bg-black/30 p-3">
-                        <div className="text-white/60 text-xs mb-2">Raw</div>
-                        <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
-                          {JSON.stringify(it, null, 2)}
-                        </pre>
-                      </div>
-                    ) : null}
-                  </div>
+                    <div className="text-xs text-white/50 mt-1">
+                      {evidenceMeta(it) || "—"}
+                    </div>
+                  </button>
                 );
               })
             )}
           </div>
         </div>
 
+        {/* Evidence actions + preview */}
+        <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4 space-y-3">
+          <div className="text-white font-semibold">Evidence</div>
+
+          {!selected ? (
+            <div className="text-white/50 text-sm">Select an item.</div>
+          ) : (
+            <>
+              <div className="border border-slate-800 rounded-xl bg-black/20 p-3">
+                <div className="text-white font-medium">
+                  {evidenceTitle(selected)}
+                </div>
+                <div className="text-white/50 text-xs mt-1">
+                  {evidenceMeta(selected) || "—"}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => openEvidence(selected)}
+                    className="px-3 py-1 text-xs rounded-lg bg-slate-700/40 text-slate-200 border border-slate-600 hover:bg-slate-600/40 transition"
+                  >
+                    Open
+                  </button>
+
+                  <button
+                    onClick={() => pivotToTimeline(selected)}
+                    className="px-3 py-1 text-xs rounded-lg bg-slate-700/40 text-slate-200 border border-slate-600 hover:bg-slate-600/40 transition"
+                  >
+                    Pivot to Timeline
+                  </button>
+
+                  {/* ✅ RBAC: hide Copy JSON unless ADMIN */}
+                  {canCopyEvidenceJson() && (
+                    <button
+                      onClick={() => handleCopyJson(selected)}
+                      className="px-3 py-1 text-xs rounded-lg bg-slate-700/40 text-slate-200 border border-slate-600 hover:bg-slate-600/40 transition"
+                    >
+                      Copy JSON
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* ✅ RBAC: raw block only for ADMIN */}
+              {canSeeRaw() && (
+                <div className="border border-slate-800 rounded-xl bg-black/20 p-3">
+                  <div className="text-white/80 text-sm font-medium mb-2">
+                    Raw details (ADMIN)
+                  </div>
+                  <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
+                    {JSON.stringify(selected, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Notes */}
         <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
           <div className="flex items-center justify-between">
             <div className="text-white font-semibold">Investigation Notes</div>
-
             <button
+              onClick={saveNotes}
               disabled={saving}
-              onClick={() => {
-                setSaving(true);
-                try {
-                  updateCaseNotes(id, notes);
-                } finally {
-                  setSaving(false);
-                }
-              }}
-              className="h-9 px-4 rounded-xl bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-500/30 hover:bg-cyan-500/25 transition disabled:opacity-50"
+              className={[
+                "h-10 px-4 rounded-xl ring-1 transition",
+                saving
+                  ? "bg-slate-800/40 text-slate-400 ring-slate-700 cursor-not-allowed"
+                  : "bg-cyan-500/20 text-cyan-200 ring-cyan-500/30 hover:bg-cyan-500/25",
+              ].join(" ")}
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving..." : "Save"}
             </button>
           </div>
 
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Write findings, IOCs, hypotheses, next steps…"
-            className="mt-3 w-full min-h-[320px] px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-white/90 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 resize-y"
+            placeholder="Write findings, IOCs, hypotheses, next steps..."
+            className="mt-3 w-full min-h-[460px] px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-800 text-white/90 outline-none focus:border-slate-600 resize-y"
           />
-
-          <div className="mt-3 text-[11px] text-white/40">
-            Notes are stored with the case (localStorage).
-          </div>
         </div>
       </div>
+
+      {/* Drawer */}
+      <RightDrawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={drawerItem?.title || drawerItem?.event_type || "Item"}
+        severity={drawerItem?.severity}
+        item={drawerItem}
+      >
+        {drawerItem && isAlert(drawerItem) ? (
+          <AlertDrawerContent alert={drawerItem} />
+        ) : (
+          <>
+            {/* ✅ RBAC: only ADMIN sees raw in drawer for non-alert */}
+            {canSeeRaw() ? (
+              <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
+                {JSON.stringify(drawerItem, null, 2)}
+              </pre>
+            ) : (
+              <div className="text-white/60 text-sm">
+                Details hidden for your role.
+              </div>
+            )}
+          </>
+        )}
+      </RightDrawer>
     </div>
   );
 }

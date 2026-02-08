@@ -5,6 +5,8 @@ import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
 
 import { getCases, getCaseById, updateCaseNotes } from "../lib/cases";
+import { canCopyEvidenceJson } from "../lib/rbac";
+
 
 function badgeClasses(type, value) {
   const v = String(value || "").toUpperCase();
@@ -420,12 +422,15 @@ export default function Cases() {
                               Pivot to Timeline
                             </button>
 
-                            <button
-                              onClick={() => copyItemJson(it)}
-                              className="px-3 py-1 text-xs rounded-lg border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition"
-                            >
-                              Copy JSON
-                            </button>
+                            {canCopyEvidenceJson() && (
+  <button
+    onClick={() => copyJson(item)}
+    className="..."
+  >
+    Copy JSON
+  </button>
+)}
+
                           </div>
                         </div>
                       ))}
