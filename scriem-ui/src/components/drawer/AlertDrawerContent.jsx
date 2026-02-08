@@ -2,12 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DrawerSection from "./DrawerSection";
 import DrawerTabs from "./DrawerTabs";
-import { getRole } from "../../lib/auth"; // ✅ role from localStorage auth
+import { getRole } from "../../lib/auth";
 
 function stableKey(item) {
   if (item?.__scriemKey) return String(item.__scriemKey);
 
-  // ✅ NO timestamps
   return String(
     item?.id ||
       item?._id ||
@@ -102,8 +101,9 @@ export default function AlertDrawerContent({ alert }) {
   const nav = useNavigate();
   if (!alert) return null;
 
-  const role = getRole(); // "USER" | "SOC_ANALYST" | "ADMIN"
+  const role = getRole();
   const isAdmin = role === "ADMIN";
+  const isAnalystOrAdmin = role === "SOC_ANALYST" || role === "ADMIN";
 
   const alertKey = useMemo(() => stableKey(alert), [alert]);
   const notesKey = useMemo(() => `scriem.investigation.notes.${alertKey}`, [alertKey]);
@@ -115,24 +115,19 @@ export default function AlertDrawerContent({ alert }) {
   const [activity, setActivity] = useState([]);
   const [copyState, setCopyState] = useState("idle");
 
-  // ✅ Refs to survive StrictMode mount/unmount cycles
   const notesRef = useRef("");
-  const dirtyRef = useRef(false); // ONLY write on cleanup if user edited
+  const dirtyRef = useRef(false);
 
-  // Load from storage when alert changes
   useEffect(() => {
     const n = readLS(notesKey, "");
     setNotes(n);
     notesRef.current = n;
-
-    // ✅ This is critical: freshly loaded means NOT dirty
     dirtyRef.current = false;
 
     setActions(readJsonLS(actionsKey, DEFAULT_ACTIONS));
     setActivity(readJsonLS(activityKey, []));
   }, [notesKey, actionsKey, activityKey]);
 
-  // Live updates from header action buttons
   useEffect(() => {
     const handler = (e) => {
       const k = e?.detail?.alertKey;
@@ -144,7 +139,6 @@ export default function AlertDrawerContent({ alert }) {
     return () => window.removeEventListener("scriem:investigation:update", handler);
   }, [alertKey, actionsKey, activityKey]);
 
-  // ✅ Flush on "page about to hide" — but ONLY if dirty
   useEffect(() => {
     const flushIfDirty = () => {
       if (!dirtyRef.current) return;
@@ -170,8 +164,6 @@ export default function AlertDrawerContent({ alert }) {
     setNotes(v);
     notesRef.current = v;
     dirtyRef.current = true;
-
-    // ✅ Persist immediately (fast close cannot lose data)
     writeLS(notesKey, v);
   };
 
@@ -186,13 +178,19 @@ export default function AlertDrawerContent({ alert }) {
     host: alert.host || null,
   };
 
+  const displayRuleName = useMemo(() => {
+    if (isAnalystOrAdmin) return alert.rule_name || "N/A";
+    // USER gets a friendly anonymized rule reference
+    const id = alert.id ?? alert.event_id ?? "??";
+    return `Threat Rule #${id}`;
+  }, [isAnalystOrAdmin, alert]);
+
   const handleCopyNotes = async () => {
     const ok = await copyToClipboard(notes || "");
     setCopyState(ok ? "copied" : "failed");
     window.setTimeout(() => setCopyState("idle"), 1200);
   };
 
-  // ✅ Tabs: Raw only for ADMIN
   const tabs = [
     {
       label: "Summary",
@@ -202,6 +200,7 @@ export default function AlertDrawerContent({ alert }) {
           <Field label="Severity" value={alert.severity} />
           <Field label="Status" value={alert.status} />
           <Field label="Host" value={alert.host} />
+          <Field label="Detection Rule" value={displayRuleName} />
         </DrawerSection>
       ),
     },
@@ -275,13 +274,6 @@ export default function AlertDrawerContent({ alert }) {
                 Clear Notes
               </button>
             </div>
-
-            {/* ✅ Hide key for non-admin */}
-            {isAdmin ? (
-              <div className="mt-2 text-[11px] text-slate-500">
-                Key: <span className="text-slate-300">{alertKey}</span>
-              </div>
-            ) : null}
           </DrawerSection>
 
           <DrawerSection title="Action Log (Wired)">
@@ -334,6 +326,7 @@ export default function AlertDrawerContent({ alert }) {
     },
   ];
 
+  // Raw JSON tab: ADMIN only (per your table)
   if (isAdmin) {
     tabs.push({
       label: "Raw",
