@@ -1,12 +1,9 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, DateTime, JSON
 from datetime import datetime, timezone
 from .database import Base
 
-
 def utcnow():
     return datetime.now(timezone.utc)
-
 
 class User(Base):
     __tablename__ = "users"
@@ -14,21 +11,20 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    role = Column(String, default="ANALYST")  # ANALYST | ADMIN
+    role = Column(String, default="USER")  # USER | SOC_ANALYST | ADMIN
     created_at = Column(DateTime, default=utcnow)
-
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    actor_username = Column(String, index=True)  # username of caller
-    action = Column(String, index=True)          # e.g., ALERT_STATUS_UPDATE
-    target_type = Column(String, index=True)     # ALERT | CASE | ...
-    target_id = Column(String, index=True)       # alert_id, case_id etc
+    actor_username = Column(String, index=True)
+    actor_role = Column(String, index=True)
+    action = Column(String, index=True)       # e.g. ALERT_STATUS_UPDATE
+    target_type = Column(String, index=True)  # ALERT | EVENT | CASE
+    target_id = Column(String, index=True)    # string for flexibility
     details = Column(JSON, default={})
     created_at = Column(DateTime, default=utcnow)
-
 
 class Event(Base):
     __tablename__ = "events"
@@ -43,7 +39,6 @@ class Event(Base):
 
     event_id = Column(Integer, index=True)
     created_at = Column(DateTime, default=utcnow)
-
 
 class Alert(Base):
     __tablename__ = "alerts"
