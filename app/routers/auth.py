@@ -9,29 +9,37 @@ from passlib.context import CryptContext
 
 from app.database import get_db
 from app import models
+from app.config import JWT_SECRET, JWT_ALGORITHM  # ✅ central config
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-JWT_SECRET = "CHANGE_ME_IN_PROD"
-JWT_ALG = "HS256"
 JWT_EXPIRE_MIN = 60 * 12  # 12 hours
 
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 class LoginRequest(BaseModel):
     username: str
     password: str
+
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     role: str
 
+
 def create_token(username: str, role: str) -> str:
     now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=JWT_EXPIRE_MIN)
-    payload = {"sub": username, "role": role, "iat": int(now.timestamp()), "exp": exp}
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+    payload = {
+        "sub": username,
+        "role": role,
+        "iat": int(now.timestamp()),
+        "exp": exp,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):

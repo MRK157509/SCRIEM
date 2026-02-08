@@ -5,15 +5,13 @@ from sqlalchemy import or_
 from app.database import get_db
 from app.models import Event, Alert
 
-from app.security import get_current_user  # ✅ JWT auth
+from app.services.authz import require_principal
+from app.services.redact import redact_alert, redact_event
 
 router = APIRouter(prefix="/timeline", tags=["Timeline"])
 
 
-# --------------------------
-# Role-based serialization
-# --------------------------
-def _event_to_dict(e: Event, include_details: bool) -> dict:
+def _event_to_dict(e: Event) -> dict:
     return {
         "id": e.id,
         "event_id": e.event_id,
@@ -21,17 +19,13 @@ def _event_to_dict(e: Event, include_details: bool) -> dict:
         "host": e.host,
         "user": e.user,
         "action": e.action,
-        # USER should not see raw payload
-        "details": e.details if include_details else None,
+        "details": e.details,
         "timestamp": e.timestamp.isoformat() if e.timestamp else None,
         "created_at": e.created_at.isoformat() if e.created_at else None,
     }
 
 
-def _alert_to_dict(a: Alert, role: str) -> dict:
-    # USER: hide rule_name (internals), keep notes so they can contribute
-    rule_name = a.rule_name if role in ("ADMIN", "SOC_ANALYST") else None
-
+def _alert_to_dict(a: Alert) -> dict:
     return {
         "id": a.id,
         "event_id": a.event_id,
@@ -40,25 +34,21 @@ def _alert_to_dict(a: Alert, role: str) -> dict:
         "status": a.status,
         "description": a.description,
         "host": a.host,
-        "rule_name": rule_name,
+        "rule_name": a.rule_name,
         "notes": a.notes,
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
 
 
-# --------------------------
-# Global search  ✅ MUST COME FIRST
-# --------------------------
 @router.get("/search")
 def search_timeline(
     q: str = Query("", min_length=1),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
-    caller: dict = Depends(get_current_user),
+    principal: dict = Depends(require_principal),
 ):
+    role = principal["role"]
     query = q.strip()
-
-    include_details = caller["role"] in ("ADMIN", "SOC_ANALYST")
 
     events = (
         db.query(Event)
@@ -84,9 +74,7 @@ def search_timeline(
                 Alert.severity.ilike(f"%{query}%"),
                 Alert.status.ilike(f"%{query}%"),
                 Alert.description.ilike(f"%{query}%"),
-                # Only analysts/admin should be able to search rule_name
-                *( [Alert.rule_name.ilike(f"%{query}%")] if caller["role"] in ("ADMIN","SOC_ANALYST") else [] ),
-                # notes are allowed to be searched by all roles (collaboration)
+                Alert.rule_name.ilike(f"%{query}%"),
                 Alert.notes.ilike(f"%{query}%"),
             )
         )
@@ -95,23 +83,19 @@ def search_timeline(
         .all()
     )
 
-    return {
-        "host": "search",
-        "events": [_event_to_dict(e, include_details=include_details) for e in events],
-        "alerts": [_alert_to_dict(a, role=caller["role"]) for a in alerts],
-    }
+    ev_payload = [redact_event(_event_to_dict(e), role) for e in events]
+    al_payload = [redact_alert(_alert_to_dict(a), role) for a in alerts]
+
+    return {"host": "search", "events": ev_payload, "alerts": al_payload}
 
 
-# --------------------------
-# Host timeline (by host)
-# --------------------------
 @router.get("/{host}")
 def get_timeline(
     host: str,
     db: Session = Depends(get_db),
-    caller: dict = Depends(get_current_user),
+    principal: dict = Depends(require_principal),
 ):
-    include_details = caller["role"] in ("ADMIN", "SOC_ANALYST")
+    role = principal["role"]
 
     events = (
         db.query(Event)
@@ -129,8 +113,7 @@ def get_timeline(
         .all()
     )
 
-    return {
-        "host": host,
-        "events": [_event_to_dict(e, include_details=include_details) for e in events],
-        "alerts": [_alert_to_dict(a, role=caller["role"]) for a in alerts],
-    }
+    ev_payload = [redact_event(_event_to_dict(e), role) for e in events]
+    al_payload = [redact_alert(_alert_to_dict(a), role) for a in alerts]
+
+    return {"host": host, "events": ev_payload, "alerts": al_payload}
