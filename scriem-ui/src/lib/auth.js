@@ -1,36 +1,45 @@
-const LS_AUTH = "scriem.auth.v1";
+const LS_TOKEN = "scriem.auth.token";
+const LS_ROLE = "scriem.auth.role";
+const LS_USER = "scriem.auth.user";
 
-/**
- * Stored shape:
- * { token: string, role: "USER"|"SOC_ANALYST"|"ADMIN", username: string }
- */
+function emitAuthChanged() {
+  window.dispatchEvent(new CustomEvent("scriem:auth:changed"));
+}
 
-export function getAuth() {
-  try {
-    const raw = localStorage.getItem(LS_AUTH);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+export function setSession({ token, role, username }) {
+  if (token) localStorage.setItem(LS_TOKEN, token);
+  if (role) localStorage.setItem(LS_ROLE, role);
+  if (username) localStorage.setItem(LS_USER, username);
+  emitAuthChanged();
+}
+
+export function clearSession() {
+  localStorage.removeItem(LS_TOKEN);
+  localStorage.removeItem(LS_ROLE);
+  localStorage.removeItem(LS_USER);
+  emitAuthChanged();
 }
 
 export function getToken() {
-  return getAuth()?.token || "";
+  return localStorage.getItem(LS_TOKEN) || "";
 }
 
 export function getRole() {
-  return getAuth()?.role || "";
+  return (localStorage.getItem(LS_ROLE) || "USER").toUpperCase();
 }
 
-export function isAuthed() {
+export function getUsername() {
+  return localStorage.getItem(LS_USER) || "user";
+}
+
+export function isLoggedIn() {
   return !!getToken();
 }
 
-export function setAuth({ token, role, username }) {
-  localStorage.setItem(LS_AUTH, JSON.stringify({ token, role, username }));
-}
-
-export function clearAuth() {
-  localStorage.removeItem(LS_AUTH);
+export function authHeaders(extra = {}) {
+  const token = getToken();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
 }

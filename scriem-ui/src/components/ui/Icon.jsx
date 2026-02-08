@@ -16,7 +16,12 @@ export default function Icon({ name = "dot", className = "", size = 18 }) {
           strokeWidth="2"
           strokeLinejoin="round"
         />
-        <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path
+          d="M10 19a2 2 0 0 0 4 0"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
@@ -30,11 +35,75 @@ export default function Icon({ name = "dot", className = "", size = 18 }) {
           strokeWidth="2"
           strokeLinecap="round"
         />
-        <path d="M18 3v4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M6 21v-4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M18 3v4h-4"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M6 21v-4h4"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     );
   }
 
-  return <span className={["inline-block rounded-full bg-current", className].join(" ")} style={{ width: 8, height: 8 }} />;
+  if (name === "logout") {
+    return (
+      <svg {...common} className={className}>
+        <path
+          d="M10 16l-4-4 4-4"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M6 12h9"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M13 20h5a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  if (name === "user") {
+    return (
+      <svg {...common} className={className}>
+        <path
+          d="M20 21a8 8 0 1 0-16 0"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <span
+      className={["inline-block rounded-full bg-current", className].join(" ")}
+      style={{ width: 8, height: 8 }}
+    />
+  );
 }
