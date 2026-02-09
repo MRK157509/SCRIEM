@@ -6,6 +6,7 @@ from app import models
 
 from app.services.authz import require_principal
 from app.services.redact import redact_alert
+from app.services.enrich import enrich_alert
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -21,9 +22,12 @@ def _alert_to_dict(a: models.Alert) -> dict:
         "status": a.status,
         "description": a.description,
         "host": a.host,
+        "rule_id": getattr(a, "rule_id", None),
         "rule_name": a.rule_name,
         "notes": a.notes,
         "created_at": a.created_at.isoformat() if a.created_at else None,
+        # Optional: if you later add Alert.user, include here
+        # "user": a.user,
     }
 
 
@@ -37,8 +41,22 @@ def list_alerts(
     query = db.query(models.Alert)
     if status:
         query = query.filter(models.Alert.status == status)
-    alerts = query.all()
-    return [redact_alert(_alert_to_dict(a), role) for a in alerts]
+
+    alerts = query.order_by(models.Alert.id.desc()).all()
+
+    out = []
+    for a in alerts:
+        d = _alert_to_dict(a)
+
+        # ✅ Enrich first (adds context fields)
+        d = enrich_alert(db, d)
+
+        # ✅ Then redact based on role (so USER doesn't get sensitive fields)
+        d = redact_alert(d, role)
+
+        out.append(d)
+
+    return out
 
 
 @router.patch("/{alert_id}")
@@ -59,21 +77,22 @@ def update_alert(
     if notes is not None:
         alert.notes = notes
 
-    # Status RBAC:
+    # Status RBAC
     if status is not None:
         status_up = status.upper()
         if status_up not in ALLOWED_STATUSES:
             raise HTTPException(status_code=400, detail="Invalid status")
 
         if role == "USER":
-            # USER limited: can only set TRIAGED (your table)
+            # USER limited: can only set TRIAGED
             if status_up != "TRIAGED":
                 raise HTTPException(status_code=403, detail="USER can only TRIAGE alerts")
-        # SOC_ANALYST + ADMIN can set any allowed status
 
         alert.status = status_up
 
     db.commit()
     db.refresh(alert)
 
-    return redact_alert(_alert_to_dict(alert), role)
+    d = _alert_to_dict(alert)
+    d = enrich_alert(db, d)
+    return redact_alert(d, role)

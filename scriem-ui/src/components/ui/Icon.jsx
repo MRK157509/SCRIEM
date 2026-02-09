@@ -57,44 +57,23 @@ export default function Icon({ name = "dot", className = "", size = 18 }) {
     return (
       <svg {...common} className={className}>
         <path
-          d="M10 16l-4-4 4-4"
+          d="M10 17l1 0m-1 0H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h4"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M14 7l4 5-4 5"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
-          d="M6 12h9"
+          d="M18 12H9"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
-        />
-        <path
-          d="M13 20h5a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-5"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-
-  if (name === "user") {
-    return (
-      <svg {...common} className={className}>
-        <path
-          d="M20 21a8 8 0 1 0-16 0"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        <path
-          d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
         />
       </svg>
     );

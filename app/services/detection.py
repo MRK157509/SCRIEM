@@ -1,62 +1,55 @@
 from sqlalchemy.orm import Session
-from app import models
-from datetime import datetime, timedelta, timezone
+
+from app.models import Alert, DetectionRule
+from app.services.iocs import extract_iocs, link_iocs_to_alert
 
 
-def run_detection(event: models.Event, db: Session):
-    # Rule 1: Failed login
-    if event.event_type == "login" and event.action == "failed_password":
-        create_alert(
-            title="Failed login detected",
-            severity="LOW",
-            description=f"User {event.user} failed login on {event.host}",
-            host=event.host,
-            event_id=event.id,
-            db=db
-        )
-
-    # Rule 2: Malware execution
-    if event.event_type == "process" and "malware" in event.action.lower():
-        create_alert(
-            title="Malware execution",
-            severity="HIGH",
-            description=f"Suspicious process on {event.host}",
-            host=event.host,
-            event_id=event.id,
-            db=db
-        )
-
-        # 🔥 Correlation Rule: Brute Force + Execution
-    five_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
-
-    recent_events = db.query(models.Event).filter(
-        models.Event.host == event.host,
-        models.Event.created_at >= five_minutes_ago
-    ).all()
-
-    failed_logins = [e for e in recent_events if e.event_type == "login" and "failed" in (e.action or "")]
-    successful_logins = [e for e in recent_events if e.event_type == "login" and "success" in (e.action or "")]
-    malware_execs = [e for e in recent_events if e.event_type == "process" and "malware" in (e.action or "").lower()]
-
-    if len(failed_logins) >= 3 and successful_logins and malware_execs:
-        create_alert(
-            title="Possible Account Compromise + Malware Execution",
-            severity="CRITICAL",
-            description=f"Multiple failed logins followed by compromise and malware on {event.host}",
-            host=event.host,
-            event_id=event.id,
-            db=db
-        )
- 
+def get_rule_by_name(db: Session, name: str):
+    return db.query(DetectionRule).filter(DetectionRule.name == name).first()
 
 
-def create_alert(title: str, severity: str, description: str, host: str, event_id: int, db: Session):
-    alert = models.Alert(
-        title=title,
-        severity=severity,
-        description=description,
-        host=host,
-        event_id=event_id,
+def run_detection(event, db: Session):
+    """
+    Rule-driven detection engine (Phase 5.2) + IOC linking (Phase 5.4)
+    """
+    rule = None
+
+    # -----------------------------
+    # Detection logic (expand later)
+    # -----------------------------
+
+    if event.event_type == "login_failed":
+        rule = get_rule_by_name(db, "Multiple Failed Logins")
+
+    elif (
+        event.event_type == "process_start"
+        and isinstance(event.details, dict)
+        and "powershell" in str(event.details.get("process", "")).lower()
+    ):
+        rule = get_rule_by_name(db, "Suspicious Process Execution")
+
+    elif event.event_type == "privilege_escalation":
+        rule = get_rule_by_name(db, "Privilege Escalation Attempt")
+
+    if not rule:
+        return  # no match
+
+    alert = Alert(
+        title=rule.name,
+        description=rule.description,
+        severity=rule.default_severity,
+        rule_id=rule.id,
+        host=event.host,
+        event_id=event.id,
+        status="OPEN",
     )
+
     db.add(alert)
     db.commit()
+    db.refresh(alert)
+
+    # -----------------------------
+    # IOC Linking (Phase 5.4)
+    # -----------------------------
+    ex = extract_iocs(event.details)
+    link_iocs_to_alert(db, alert.id, ex)

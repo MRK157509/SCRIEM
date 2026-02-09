@@ -1,45 +1,55 @@
-const LS_TOKEN = "scriem.auth.token";
-const LS_ROLE = "scriem.auth.role";
-const LS_USER = "scriem.auth.user";
+// src/lib/auth.js
+// Single source of truth for auth storage + role/user display.
+// Keys must stay consistent across Login/Topbar/API.
 
-function emitAuthChanged() {
-  window.dispatchEvent(new CustomEvent("scriem:auth:changed"));
-}
-
-export function setSession({ token, role, username }) {
-  if (token) localStorage.setItem(LS_TOKEN, token);
-  if (role) localStorage.setItem(LS_ROLE, role);
-  if (username) localStorage.setItem(LS_USER, username);
-  emitAuthChanged();
-}
-
-export function clearSession() {
-  localStorage.removeItem(LS_TOKEN);
-  localStorage.removeItem(LS_ROLE);
-  localStorage.removeItem(LS_USER);
-  emitAuthChanged();
-}
+const TOKEN_KEY = "scriem.auth.token";
+const ROLE_KEY = "scriem.auth.role";
+const USER_KEY = "scriem.auth.user";
 
 export function getToken() {
-  return localStorage.getItem(LS_TOKEN) || "";
-}
-
-export function getRole() {
-  return (localStorage.getItem(LS_ROLE) || "USER").toUpperCase();
-}
-
-export function getUsername() {
-  return localStorage.getItem(LS_USER) || "user";
+  try {
+    return localStorage.getItem(TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
 }
 
 export function isLoggedIn() {
   return !!getToken();
 }
 
-export function authHeaders(extra = {}) {
-  const token = getToken();
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...extra,
-  };
+export function getRole() {
+  try {
+    return (localStorage.getItem(ROLE_KEY) || "USER").toUpperCase();
+  } catch {
+    return "USER";
+  }
+}
+
+export function getUsername() {
+  try {
+    return localStorage.getItem(USER_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function setSession({ token, role, username }) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    if (role) localStorage.setItem(ROLE_KEY, String(role).toUpperCase());
+    if (username) localStorage.setItem(USER_KEY, String(username));
+  } catch {}
+
+  window.dispatchEvent(new Event("scriem:auth:changed"));
+}
+
+export function clearSession() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(ROLE_KEY);
+    localStorage.removeItem(USER_KEY);
+  } catch {}
+
+  window.dispatchEvent(new Event("scriem:auth:changed"));
 }

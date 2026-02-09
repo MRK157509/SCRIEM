@@ -58,27 +58,35 @@ def _mask_iocs(obj):
     return obj
 
 
-def redact_alert(alert_dict: dict, role: str) -> dict:
-    """
-    Implements your table:
-    - ADMIN: full (no masking, ids visible)
-    - SOC_ANALYST: full IOCs, rule name visible, BUT agent/system IDs hidden
-    - USER: IOCs masked, rule name anonymized, agent/system IDs hidden
-    """
+def redact_alert(alert: dict, role: str) -> dict:
     role = (role or "").upper()
-    a = deepcopy(alert_dict)
 
-    if role != "ADMIN":
-        a = _strip_sensitive_keys(a)
+    # ✅ ADMIN sees everything — no masking
+    if role == "ADMIN":
+        return alert
 
+    redacted = alert.copy()
+
+    # 🟡 SOC_ANALYST — can see rule name, but not system IDs if you add later
+    if role == "SOC_ANALYST":
+        # Analysts can see real detection rule names
+        return redacted
+
+    # 🔵 USER — heavy masking
     if role == "USER":
-        # anonymize rule_name
-        aid = a.get("id") or a.get("event_id") or "??"
-        a["rule_name"] = f"Threat Rule #{aid}"
-        # mask any IOC-like values anywhere in payload
-        a = _mask_iocs(a)
+        # Mask detection rule name
+        if redacted.get("rule_name"):
+            redacted["rule_name"] = "Threat Rule"
 
-    return a
+        # Mask host IP patterns inside description (basic masking)
+        if redacted.get("description"):
+            redacted["description"] = redacted["description"].replace("10.", "10.x.")
+
+        return redacted
+
+    # Default fallback
+    return redacted
+
 
 
 def redact_event(event_dict: dict, role: str) -> dict:

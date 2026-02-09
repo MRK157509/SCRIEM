@@ -1,14 +1,12 @@
 import { useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Icon from "../components/ui/Icon";
 import { setSession } from "../lib/auth";
 
 export default function Login() {
   const nav = useNavigate();
-  const location = useLocation();
 
   const from = useMemo(() => {
-    // if you later store "from" in router state, you can read it here
     return "/";
   }, []);
 
@@ -35,15 +33,14 @@ export default function Login() {
       }
 
       const data = await res.json();
-      // expected: { access_token, role, token_type }
       const token = data?.access_token;
       const role = data?.role;
 
       if (!token || !role) throw new Error("Invalid login response");
 
+      // ✅ This is Task C4: single source of truth for auth storage + Topbar update
       setSession({ token, role, username });
 
-      // go to dashboard
       nav(from, { replace: true });
     } catch (e2) {
       setErr(e2?.message || "Login failed");
@@ -64,7 +61,8 @@ export default function Login() {
           </div>
 
           <div className="h-10 w-10 rounded-xl border border-white/10 bg-white/5 grid place-items-center">
-            <Icon name="user" size={18} />
+            {/* Safe icon name */}
+            <Icon name="dot" size={18} />
           </div>
         </div>
 
@@ -75,7 +73,7 @@ export default function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="mt-1 w-full h-11 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
-              placeholder="user / analyst / admin"
+              placeholder="user1 / analyst1 / admin1"
               autoComplete="username"
             />
           </div>
@@ -111,8 +109,9 @@ export default function Login() {
           </button>
 
           <div className="text-[11px] text-white/40 leading-relaxed">
-            Tip: Use different roles to see RBAC in action. USER has masked IOCs, SOC_ANALYST
-            sees full IOCs, ADMIN sees raw JSON.
+            Tip: Test roles:
+            <br />
+            USER: no raw/json/ioc copy • SOC_ANALYST: no raw/json/ioc copy • ADMIN: full
           </div>
         </form>
       </div>

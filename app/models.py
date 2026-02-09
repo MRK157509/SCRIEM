@@ -1,49 +1,41 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON
 from datetime import datetime, timezone
-from .database import Base
 
-def utcnow():
-    return datetime.now(timezone.utc)
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    JSON,
+    ForeignKey,
+    UniqueConstraint,
+)
+from app.database import Base
 
-class User(Base):
-    __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
-    password_hash = Column(String, nullable=False)
-    role = Column(String, default="USER")  # USER | SOC_ANALYST | ADMIN
-    created_at = Column(DateTime, default=utcnow)
-
-class AuditLog(Base):
-    __tablename__ = "audit_logs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    actor_username = Column(String, index=True)
-    actor_role = Column(String, index=True)
-    action = Column(String, index=True)       # e.g. ALERT_STATUS_UPDATE
-    target_type = Column(String, index=True)  # ALERT | EVENT | CASE
-    target_id = Column(String, index=True)    # string for flexibility
-    details = Column(JSON, default={})
-    created_at = Column(DateTime, default=utcnow)
+# ---------------------------
+# Core SIEM Models
+# ---------------------------
 
 class Event(Base):
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True, index=True)
+
     event_type = Column(String, index=True)
     host = Column(String, index=True)
     user = Column(String, index=True)
     action = Column(String)
     details = Column(JSON)
-    timestamp = Column(DateTime, default=utcnow)
 
-    event_id = Column(Integer, index=True)
-    created_at = Column(DateTime, default=utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 
 class Alert(Base):
     __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True, index=True)
+
     title = Column(String)
     severity = Column(String)
     status = Column(String, default="OPEN")
@@ -52,7 +44,91 @@ class Alert(Base):
     host = Column(String, index=True)
     event_id = Column(Integer, index=True)
 
-    notes = Column(String, default="")
-    rule_name = Column(String)
+    # Detection intelligence
+    rule_id = Column(Integer, index=True)          # ✅ Phase 5
+    rule_name = Column(String)                     # optional (legacy/compat)
 
-    created_at = Column(DateTime, default=utcnow)
+    notes = Column(String, default="")
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ---------------------------
+# Auth / IAM
+# ---------------------------
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, default="USER")  # USER | SOC_ANALYST | ADMIN
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ---------------------------
+# Detection Rules (Phase 5.1)
+# ---------------------------
+
+class DetectionRule(Base):
+    __tablename__ = "detection_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    name = Column(String, unique=True, index=True, nullable=False)
+    description = Column(String)
+
+    mitre_tactic = Column(String)
+    mitre_technique = Column(String)
+
+    default_severity = Column(String)      # LOW | MEDIUM | HIGH | CRITICAL
+    engine = Column(String, default="SCRIEM")
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ---------------------------
+# IOC Intelligence (Phase 5.4)
+# ---------------------------
+
+class IOC(Base):
+    __tablename__ = "iocs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String, index=True)     # ip | domain | hash
+    value = Column(String, index=True)    # actual IOC value
+
+    first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("kind", "value", name="uq_ioc_kind_value"),
+    )
+
+
+class EventIOC(Base):
+    __tablename__ = "event_iocs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"), index=True)
+    ioc_id = Column(Integer, ForeignKey("iocs.id"), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "ioc_id", name="uq_event_ioc"),
+    )
+
+
+class AlertIOC(Base):
+    __tablename__ = "alert_iocs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    alert_id = Column(Integer, ForeignKey("alerts.id"), index=True)
+    ioc_id = Column(Integer, ForeignKey("iocs.id"), index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("alert_id", "ioc_id", name="uq_alert_ioc"),
+    )
