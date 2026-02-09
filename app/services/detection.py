@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
-from app.models import Alert, DetectionRule
-from app.services.iocs import extract_iocs, link_iocs_to_alert
+from app.models import DetectionRule
+from app.services.alerts import create_alert_from_rule
 
 
 def get_rule_by_name(db: Session, name: str):
@@ -10,7 +10,7 @@ def get_rule_by_name(db: Session, name: str):
 
 def run_detection(event, db: Session):
     """
-    Rule-driven detection engine (Phase 5.2) + IOC linking (Phase 5.4)
+    Rule-driven detection engine (Phase 5.2) now uses the alert contract (Phase 5.6).
     """
     rule = None
 
@@ -32,24 +32,8 @@ def run_detection(event, db: Session):
         rule = get_rule_by_name(db, "Privilege Escalation Attempt")
 
     if not rule:
-        return  # no match
+        return None  # no match
 
-    alert = Alert(
-        title=rule.name,
-        description=rule.description,
-        severity=rule.default_severity,
-        rule_id=rule.id,
-        host=event.host,
-        event_id=event.id,
-        status="OPEN",
-    )
-
-    db.add(alert)
-    db.commit()
-    db.refresh(alert)
-
-    # -----------------------------
-    # IOC Linking (Phase 5.4)
-    # -----------------------------
-    ex = extract_iocs(event.details)
-    link_iocs_to_alert(db, alert.id, ex)
+    # ✅ Single contract call (this is the point of Phase 5.6)
+    alert = create_alert_from_rule(db, event=event, rule=rule, status="OPEN")
+    return alert

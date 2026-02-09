@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from app.database import engine
 from app.models import Base
 
-from app.routers import alerts, timeline, events, auth, rules, iocs
+from app.routers import alerts, timeline, events, auth, rules, iocs, metrics
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("scriem")
@@ -21,6 +22,8 @@ app.include_router(timeline.router)
 app.include_router(events.router)
 app.include_router(rules.router)
 app.include_router(iocs.router)
+app.include_router(metrics.router)
+
 
 
 @app.get("/")
