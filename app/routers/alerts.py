@@ -8,6 +8,9 @@ from app.services.authz import require_principal
 from app.services.redact import redact_alert
 from app.services.enrich import enrich_alert
 
+from sqlalchemy.orm import relationship
+
+
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 ALLOWED_STATUSES = {"OPEN", "TRIAGED", "ESCALATED", "CLOSED"}

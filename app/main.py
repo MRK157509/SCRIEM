@@ -2,7 +2,9 @@ import logging
 from fastapi import FastAPI
 
 from app.database import engine
-from app.models import Base
+from app.database import Base
+import app.models
+import app.models as models_pkg
 
 from app.routers import alerts, timeline, events, auth, rules, iocs, metrics
 

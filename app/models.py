@@ -11,6 +11,10 @@ from sqlalchemy import (
 )
 from app.database import Base
 
+# app/models.py (BOTTOM of file)
+from app.models.alert_ai_analysis import AlertAIAnalysis  # noqa: F401
+
+from sqlalchemy.orm import relationship  # ADD THIS IMPORT AT TOP IF NOT PRESENT
 
 # ---------------------------
 # Core SIEM Models
@@ -51,6 +55,17 @@ class Alert(Base):
     notes = Column(String, default="")
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # -----------------------------
+    # 🤖 Phase 6 — AI Analysis Link
+    # One alert ↔ one AI analysis record
+    # -----------------------------
+    ai_analysis = relationship(
+        "AlertAIAnalysis",
+        back_populates="alert",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
 
 # ---------------------------
