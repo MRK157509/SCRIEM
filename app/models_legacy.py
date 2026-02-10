@@ -11,8 +11,6 @@ from sqlalchemy import (
 )
 from app.database import Base
 
-# app/models.py (BOTTOM of file)
-from app.models.alert_ai_analysis import AlertAIAnalysis  # noqa: F401
 
 from sqlalchemy.orm import relationship  # ADD THIS IMPORT AT TOP IF NOT PRESENT
 

@@ -21,3 +21,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+try:
+    import app.models_legacy  # noqa: F401
+    import app.models.alert_ai_analysis  # noqa: F401
+except Exception:
+    # Avoid hard crash during tooling; runtime will import via main.py anyway.
+    pass

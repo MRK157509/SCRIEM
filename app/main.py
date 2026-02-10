@@ -1,14 +1,25 @@
+# app/main.py
 import logging
 from fastapi import FastAPI
 
-from app.database import engine
-from app.database import Base
-import app.models
-import app.models as models_pkg
+from app.database import engine, Base
 
-from app.routers import alerts, timeline, events, auth, rules, iocs, metrics
+# IMPORTANT:
+# We import models BEFORE create_all so SQLAlchemy registers tables.
+# But we do it in a controlled block to reduce circular-import problems.
+try:
+    import app.models_legacy  # loads your existing models (Alert, Event, IOC, etc.)
+except Exception as e:
+    raise RuntimeError(f"Failed to import legacy models (app.models_legacy): {e}")
 
+try:
+    # loads new modular models (Phase 6 tables)
+    # NOTE: this must NOT import app.models (package __init__) in a way that re-imports models_legacy.
+    import app.models.alert_ai_analysis  # noqa: F401
+except Exception as e:
+    raise RuntimeError(f"Failed to import modular models (app.models.*): {e}")
 
+# Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("scriem")
 
@@ -17,15 +28,17 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SCRIEM")
 
-# Routers
+# Routers (import AFTER models are registered)
+from app.routers import alerts, timeline, events, auth, rules, iocs, metrics, alerts_ai  # noqa: E402
+
 app.include_router(auth.router)
 app.include_router(alerts.router)
+app.include_router(alerts_ai.router)
 app.include_router(timeline.router)
 app.include_router(events.router)
 app.include_router(rules.router)
 app.include_router(iocs.router)
 app.include_router(metrics.router)
-
 
 
 @app.get("/")
