@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
 import { fetchAlerts } from "../lib/api";
+import AIAnalysisPanel from "../components/alerts/AIAnalysisPanel";
 
 /* ---------------- Stable Key (NO timestamps) ---------------- */
 function makeStableKey(alert) {
@@ -44,6 +45,9 @@ export default function Alerts() {
     setSelectedAlert({ ...alert, __scriemKey: stableKey });
     setDrawerOpen(true);
   };
+
+  const selectedAlertId =
+    selectedAlert?.id || selectedAlert?.alert_id || selectedAlert?._id;
 
   return (
     <div className="p-6 space-y-4">
@@ -109,6 +113,7 @@ export default function Alerts() {
         item={selectedAlert}
       >
         <AlertDrawerContent alert={selectedAlert} />
+        <AIAnalysisPanel alertId={selectedAlertId} />
       </RightDrawer>
     </div>
   );

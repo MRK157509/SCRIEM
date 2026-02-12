@@ -15,7 +15,6 @@ from app.services.ai_analyst.persistence import upsert_ai_analysis, row_to_dict
 router = APIRouter(prefix="/alerts", tags=["Alerts - AI Analysis"])
 
 
-# Dependency (match your project style)
 def get_db():
     db = SessionLocal()
     try:
@@ -26,7 +25,6 @@ def get_db():
 
 @router.get("/{alert_id}/ai-analysis")
 def get_ai_analysis(alert_id: int, db: Session = Depends(get_db)):
-    # ensure alert exists
     alert = db.query(Alert).filter(Alert.id == alert_id).one_or_none()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
@@ -44,7 +42,6 @@ def reanalyze_alert(alert_id: int, db: Session = Depends(get_db)):
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
-    # Build a minimal payload from your alert fields (works even if no raw JSON is stored)
     payload = AIAnalysisInput(
         alert_id=str(alert.id),
         alert={
@@ -63,8 +60,8 @@ def reanalyze_alert(alert_id: int, db: Session = Depends(get_db)):
         iocs=None,
     )
 
-    analyst = AIAnalyst(AIAnalystConfig(llm_enabled=False))  # Phase 6.3 enables/configures LLM safely
-    result = analyst.analyze(payload)
+    analyst = AIAnalyst(AIAnalystConfig())
+    analysis_result = analyst.analyze(payload)  # ✅ MUST be AIAnalysisResult
 
-    row = upsert_ai_analysis(db, alert_id=alert.id, result=result)
+    row = upsert_ai_analysis(db, alert_id=alert.id, result=analysis_result)  # ✅ store AIAnalysisResult
     return row_to_dict(row)

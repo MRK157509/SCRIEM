@@ -16,10 +16,16 @@ def _to_lines(items: list[str]) -> str:
 
 
 def upsert_ai_analysis(db: Session, alert_id: int, result: AIAnalysisResult) -> AlertAIAnalysis:
-    """
-    Insert if missing, else update. 1 AI analysis row per alert.
-    alert_id is int because your Alert.id is Integer.
-    """
+    # -------------------------
+    # HARD GUARD (debug-proof)
+    # -------------------------
+    if not hasattr(result, "risk_level"):
+        raise TypeError(
+            "upsert_ai_analysis expected AIAnalysisResult, but got: "
+            f"{type(result).__name__}. "
+            "This usually means you passed the AIAnalyst instance instead of analyst.analyze(payload)."
+        )
+
     row = db.query(AlertAIAnalysis).filter(AlertAIAnalysis.alert_id == alert_id).one_or_none()
 
     risk_level_str = result.risk_level.value if hasattr(result.risk_level, "value") else str(result.risk_level)
