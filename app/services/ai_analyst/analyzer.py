@@ -7,11 +7,11 @@ from .schemas import AIAnalysisInput, AIAnalysisResult
 from .engines.llm_engine import LLMEngine, LLMEngineError
 from .engines.fallback_engine import FallbackEngine
 
+from app.config import AI_LLM_ENABLED
 
 @dataclass
 class AIAnalystConfig:
-    llm_enabled: bool = False
-
+    llm_enabled: bool = AI_LLM_ENABLED
 
 class AIAnalyst:
     def __init__(self, config: AIAnalystConfig):
