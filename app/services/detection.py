@@ -1,39 +1,55 @@
-from sqlalchemy.orm import Session
-
-from app.models import DetectionRule
-from app.services.alerts import create_alert_from_rule
+from datetime import datetime, timezone
+from app.models_legacy import DetectionRule, Alert
 
 
-def get_rule_by_name(db: Session, name: str):
-    return db.query(DetectionRule).filter(DetectionRule.name == name).first()
+def evaluate_event(db, event):
+    rules = db.query(DetectionRule).all()
+    created_ids = []
+
+    for rule in rules:
+
+        if rule.event_type and rule.event_type != event.event_type:
+            continue
+
+        if rule.action and rule.action != event.action:
+            continue
+
+        if rule.match_contains:
+            if not event.details:
+                continue
+            if rule.match_contains.lower() not in event.details.lower():
+                continue
+
+        existing = (
+            db.query(Alert)
+            .filter(Alert.event_id == event.id)
+            .filter(Alert.rule_id == rule.id)
+            .first()
+        )
+        if existing:
+            continue
+
+        alert = Alert(
+            title=rule.name,
+            severity=rule.default_severity,
+            status="OPEN",
+            description=rule.description,
+            host=event.host,
+            event_id=event.id,
+            rule_id=rule.id,
+            rule_name=rule.name,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        db.add(alert)
+        db.flush()
+        created_ids.append(alert.id)
+
+    return created_ids
 
 
-def run_detection(event, db: Session):
-    """
-    Rule-driven detection engine (Phase 5.2) now uses the alert contract (Phase 5.6).
-    """
-    rule = None
-
-    # -----------------------------
-    # Detection logic (expand later)
-    # -----------------------------
-
-    if event.event_type == "login_failed":
-        rule = get_rule_by_name(db, "Multiple Failed Logins")
-
-    elif (
-        event.event_type == "process_start"
-        and isinstance(event.details, dict)
-        and "powershell" in str(event.details.get("process", "")).lower()
-    ):
-        rule = get_rule_by_name(db, "Suspicious Process Execution")
-
-    elif event.event_type == "privilege_escalation":
-        rule = get_rule_by_name(db, "Privilege Escalation Attempt")
-
-    if not rule:
-        return None  # no match
-
-    # ✅ Single contract call (this is the point of Phase 5.6)
-    alert = create_alert_from_rule(db, event=event, rule=rule, status="OPEN")
-    return alert
+def evaluate_events(db, events):
+    total = 0
+    for event in events:
+        total += len(evaluate_event(db, event))
+    return total

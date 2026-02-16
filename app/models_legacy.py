@@ -93,6 +93,11 @@ class DetectionRule(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     description = Column(String)
 
+    match_contains = Column(String, index=True, default="")
+    event_type = Column(String, index=True, default="")
+    action = Column(String, index=True, default="")
+
+
     mitre_tactic = Column(String)
     mitre_technique = Column(String)
 

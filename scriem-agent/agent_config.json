@@ -1,0 +1,11 @@
+﻿{
+  "server_base": "http://127.0.0.1:9000",
+  "api_key": "scriem-secret-key",
+  "batch_size": 25,
+  "interval_seconds": 2,
+  "jitter_seconds": 1,
+  "enable_auth": true,
+  "enable_process": true,
+  "enable_network": true,
+  "enable_system": true
+}

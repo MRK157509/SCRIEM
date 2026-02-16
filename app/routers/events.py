@@ -1,130 +1,156 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy.orm import Session
-import logging
-from typing import List, Optional
+# app/routers/events.py
 
-from app import models, schemas
-from app.database import get_db
-from app.services.detection import run_detection
-from app.services.normalizer import normalize_event
-from app.config import API_KEY
-from app.services.rate_limit import allow_request
+from typing import Optional, List, Any, Dict
+from datetime import datetime, timezone
 
-from app.services.iocs import extract_iocs, link_iocs_to_event
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 
-logger = logging.getLogger("scriem")
-router = APIRouter()
+from app.database import SessionLocal
+from app.security import require_api_key
 
+from app.models_legacy import Event
+from app.services.detection import evaluate_event, evaluate_events
 
-def verify_api_key(x_api_key: str = Header(None)):
-    if x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return x_api_key
+router = APIRouter(prefix="/events", tags=["events"])
 
 
-@router.post("/events")
-def ingest_event(
-    event: schemas.EventCreate,
-    db: Session = Depends(get_db),
-    api_key: str = Depends(verify_api_key),
-):
-    normalized = normalize_event(event.dict())
+# ---------------- DB dependency ----------------
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-    logger.info(
-        f"Event received from {normalized['host']}: {normalized['event_type']} {normalized['action']}"
+
+# ---------------- Incoming schemas (flexible) ----------------
+class EventIn(BaseModel):
+    host: Optional[str] = None
+    user: Optional[str] = None
+
+    event_type: Optional[str] = None
+    action: Optional[str] = None
+
+    message: Optional[str] = None
+    details: Optional[str] = None  # allow both
+    ip: Optional[str] = None
+    src_ip: Optional[str] = None
+    dest_ip: Optional[str] = None
+
+    timestamp: Optional[str] = None  # accept iso string if provided
+
+    class Config:
+        extra = "allow"
+
+
+class BatchIn(BaseModel):
+    events: List[Dict[str, Any]]
+
+
+def _now_utc():
+    return datetime.now(timezone.utc)
+
+
+def _pick_details(payload: EventIn) -> str:
+    # prefer explicit details, otherwise message, otherwise empty
+    if payload.details:
+        return str(payload.details)
+    if payload.message:
+        return str(payload.message)
+    # if extra fields exist, keep a minimal signal
+    return ""
+
+
+def _parse_timestamp(ts: Optional[str]) -> Optional[datetime]:
+    if not ts:
+        return None
+    # tolerate iso strings; if parsing fails, ignore
+    try:
+        # Handles "2026-02-01T15:09:03.990807" etc.
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+# ---------------- Routes ----------------
+
+@router.post("", dependencies=[Depends(require_api_key)])
+def ingest_event(payload: EventIn, db=Depends(get_db)):
+    """
+    Production ingest:
+    1) Store event
+    2) Run detection rules against this event
+    3) Create alerts (if any)
+    """
+    e = Event(
+        host=payload.host or "unknown-host",
+        user=payload.user or "unknown-user",
+        event_type=(payload.event_type or "").strip().lower(),
+        action=(payload.action or "").strip().lower(),
+        details=_pick_details(payload),
+        timestamp=_parse_timestamp(payload.timestamp),
+        created_at=_now_utc(),
     )
 
-    if not allow_request(normalized["host"]):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-
-    db_event = models.Event(
-        event_type=normalized["event_type"],
-        host=normalized["host"],
-        user=normalized["user"],
-        action=normalized["action"],
-        details=normalized["details"],
-    )
-
-    db.add(db_event)
+    db.add(e)
     db.commit()
-    db.refresh(db_event)
+    db.refresh(e)
 
-    # ✅ Phase 5.4: Extract + persist IOCs for this event
-    ex = extract_iocs(db_event.details)
-    link_iocs_to_event(db, db_event.id, ex)
+    created_alert_ids = evaluate_event(db, e)
+    db.commit()
 
-    # Detection engine (may create alert)
-    run_detection(db_event, db)
-
-    return {"status": "stored", "event_id": db_event.id}
-
-
-@router.get("/events")
-def get_events(
-    host: Optional[str] = None,
-    user: Optional[str] = None,
-    event_type: Optional[str] = None,
-    db: Session = Depends(get_db),
-):
-    query = db.query(models.Event)
-
-    if host:
-        query = query.filter(models.Event.host == host)
-    if user:
-        query = query.filter(models.Event.user == user)
-    if event_type:
-        query = query.filter(models.Event.event_type == event_type)
-
-    return query.order_by(models.Event.timestamp.desc()).all()
+    return {
+        "status": "stored",
+        "event_id": e.id,
+        "alerts_created": len(created_alert_ids),
+        "alert_ids": created_alert_ids,
+    }
 
 
-@router.get("/timeline/{host}")
-def host_timeline(host: str, db: Session = Depends(get_db)):
-    events = (
-        db.query(models.Event)
-        .filter(models.Event.host == host)
-        .order_by(models.Event.timestamp.asc())
-        .all()
-    )
-    return events
+@router.post("/batch", dependencies=[Depends(require_api_key)])
+def ingest_events_batch(payload: BatchIn, db=Depends(get_db)):
+    """
+    Batch ingest:
+    1) Store all events
+    2) Run detection on all of them
+    """
+    event_rows: List[Event] = []
 
+    for raw in payload.events:
+        # raw is dict; map to EventIn so we keep same normalization rules
+        obj = EventIn(**raw)
 
-@router.post("/events/batch")
-def ingest_events_batch(
-    events: List[schemas.EventCreate],
-    db: Session = Depends(get_db),
-    api_key: str = Depends(verify_api_key),
-):
-    stored = []
-
-    for e in events:
-        normalized = normalize_event(e.dict())
-
-        logger.info(
-            f"[BATCH] Event from {normalized['host']}: {normalized['event_type']} {normalized['action']}"
+        e = Event(
+            host=obj.host or "unknown-host",
+            user=obj.user or "unknown-user",
+            event_type=(obj.event_type or "").strip().lower(),
+            action=(obj.action or "").strip().lower(),
+            details=_pick_details(obj),
+            timestamp=_parse_timestamp(obj.timestamp),
+            created_at=_now_utc(),
         )
+        db.add(e)
+        event_rows.append(e)
 
-        if not allow_request(normalized["host"]):
-            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    db.commit()
 
-        db_event = models.Event(
-            event_type=normalized["event_type"],
-            host=normalized["host"],
-            user=normalized["user"],
-            action=normalized["action"],
-            details=normalized["details"],
-        )
+    # refresh ids
+    for e in event_rows:
+        db.refresh(e)
 
-        db.add(db_event)
-        db.commit()
-        db.refresh(db_event)
+    alerts_created = evaluate_events(db, event_rows)
+    db.commit()
 
-        # ✅ Phase 5.4: IOCs for event
-        ex = extract_iocs(db_event.details)
-        link_iocs_to_event(db, db_event.id, ex)
+    return {
+        "status": "stored_batch",
+        "count": len(event_rows),
+        "alerts_created": alerts_created,
+        "events": [{"event_id": e.id} for e in event_rows],
+    }
 
-        run_detection(db_event, db)
 
-        stored.append({"event_id": db_event.id})
-
-    return {"status": "stored_batch", "count": len(stored), "events": stored}
+@router.get("", dependencies=[Depends(require_api_key)])
+def get_events(limit: int = 200, db=Depends(get_db)):
+    rows = db.query(Event).order_by(Event.id.desc()).limit(limit).all()
+    return {"events": rows}
