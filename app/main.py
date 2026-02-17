@@ -13,11 +13,12 @@ except Exception as e:
     raise RuntimeError(f"Failed to import legacy models (app.models_legacy): {e}")
 
 try:
-    # loads new modular models (Phase 6 tables)
-    # NOTE: this must NOT import app.models (package __init__) in a way that re-imports models_legacy.
+    # loads new modular models (Phase 6 tables + Phase 7 agents)
     import app.models.alert_ai_analysis  # noqa: F401
+    import app.models.agent  # noqa: F401
 except Exception as e:
     raise RuntimeError(f"Failed to import modular models (app.models.*): {e}")
+
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -41,18 +42,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Routers (import AFTER models are registered)
-from app.routers import alerts, timeline, events, auth, rules, iocs, metrics, alerts_ai  # noqa: E402
+from app.routers import alerts, timeline, events, auth, rules, iocs, metrics, alerts_ai, agents  # noqa: E402
 
+app.include_router(agents.router)
 app.include_router(auth.router)
-app.include_router(alerts.router)
 app.include_router(alerts_ai.router)
 app.include_router(timeline.router)
 app.include_router(events.router)
 app.include_router(rules.router)
 app.include_router(iocs.router)
 app.include_router(metrics.router)
+app.include_router(alerts.router)
 
 
 @app.get("/")

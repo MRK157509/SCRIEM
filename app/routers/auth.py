@@ -2,19 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
-from jose import jwt, JWTError
+from jose import jwt
 from passlib.context import CryptContext
 
 from app.database import get_db
-from app import models
+from app.models_legacy import User  # ✅ IMPORTANT: direct import (no app.models ambiguity)
 from app.config import JWT_SECRET, JWT_ALGORITHM  # ✅ central config
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 JWT_EXPIRE_MIN = 60 * 12  # 12 hours
-
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -43,7 +41,7 @@ def create_token(username: str, role: str) -> str:
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.username == body.username).first()
+    user = db.query(User).filter(User.username == body.username).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 

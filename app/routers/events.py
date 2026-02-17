@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.database import SessionLocal
-from app.security import require_api_key
+from app.security import require_agent_token
 
 from app.models_legacy import Event
 from app.services.detection import evaluate_event, evaluate_events
@@ -75,7 +75,7 @@ def _parse_timestamp(ts: Optional[str]) -> Optional[datetime]:
 
 # ---------------- Routes ----------------
 
-@router.post("", dependencies=[Depends(require_api_key)])
+@router.post("", dependencies=[Depends(require_agent_token)])
 def ingest_event(payload: EventIn, db=Depends(get_db)):
     """
     Production ingest:
@@ -108,7 +108,7 @@ def ingest_event(payload: EventIn, db=Depends(get_db)):
     }
 
 
-@router.post("/batch", dependencies=[Depends(require_api_key)])
+@router.post("/batch", dependencies=[Depends(require_agent_token)])
 def ingest_events_batch(payload: BatchIn, db=Depends(get_db)):
     """
     Batch ingest:
@@ -150,7 +150,7 @@ def ingest_events_batch(payload: BatchIn, db=Depends(get_db)):
     }
 
 
-@router.get("", dependencies=[Depends(require_api_key)])
+@router.get("", dependencies=[Depends(require_agent_token)])
 def get_events(limit: int = 200, db=Depends(get_db)):
     rows = db.query(Event).order_by(Event.id.desc()).limit(limit).all()
     return {"events": rows}

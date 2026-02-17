@@ -25,6 +25,7 @@ def get_db():
 try:
     import app.models_legacy  # noqa: F401
     import app.models.alert_ai_analysis  # noqa: F401
+    import app.models.agent  # noqa: F401
 except Exception:
     # Avoid hard crash during tooling; runtime will import via main.py anyway.
     pass
