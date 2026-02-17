@@ -1,14 +1,19 @@
 import os
 
-API_KEY = "scriem-secret-key"
-JWT_SECRET = "CHANGE_ME_SUPER_SECRET_DEV"
-JWT_ALGORITHM = "HS256"
+def _get(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
 
-AI_LLM_ENABLED = os.getenv("AI_LLM_ENABLED", "false").lower().strip() == "true"
-AI_LLM_PROVIDER = os.getenv("AI_LLM_PROVIDER", "openai").strip()
-AI_LLM_MODEL = os.getenv("AI_LLM_MODEL", "gpt-4o-mini").strip()
-AI_LLM_API_KEY = os.getenv("AI_LLM_API_KEY", "").strip()
-AI_LLM_TIMEOUT_SECONDS = int(os.getenv("AI_LLM_TIMEOUT_SECONDS", "20"))
+# Database
+DATABASE_URL = _get("DATABASE_URL", "sqlite:///./siem.db")
 
-if AI_LLM_ENABLED and not AI_LLM_API_KEY:
-    raise RuntimeError("AI_LLM_ENABLED=true but AI_LLM_API_KEY is empty")
+# JWT (UI auth)
+JWT_SECRET = _get("JWT_SECRET", "dev-secret-change-me")
+JWT_ALGORITHM = _get("JWT_ALGORITHM", "HS256")
+
+# CORS
+# Comma-separated list for docker, e.g. "http://localhost:8080,http://127.0.0.1:8080"
+ALLOW_ORIGINS = [o.strip() for o in _get("ALLOW_ORIGINS", "").split(",") if o.strip()]
+
+# Runtime
+APP_ENV = _get("APP_ENV", "development")
+LOG_LEVEL = _get("LOG_LEVEL", "INFO")

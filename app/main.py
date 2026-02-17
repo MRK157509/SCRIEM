@@ -31,16 +31,19 @@ app = FastAPI(title="SCRIEM")
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import ALLOW_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
+    allow_origins=ALLOW_ORIGINS or [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Routers (import AFTER models are registered)
 from app.routers import alerts, timeline, events, auth, rules, iocs, metrics, alerts_ai, agents  # noqa: E402
