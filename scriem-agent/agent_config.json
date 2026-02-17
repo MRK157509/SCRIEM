@@ -1,9 +1,20 @@
 ﻿{
   "server_base": "http://127.0.0.1:9000",
-  "api_key": "scriem-secret-key",
+  "agent_token": "FrJJol52MfEfZpd9WiIexu39-p2tDIMauqLGGWS9CWg",
+
   "batch_size": 25,
   "interval_seconds": 2,
   "jitter_seconds": 1,
+  "max_flush_batches_per_cycle": 5,
+
+
+  "queue_file": "queue.jsonl",
+  "max_queue_events": 20000,
+
+  "http_timeout_seconds": 15,
+  "backoff_initial_seconds": 2,
+  "backoff_max_seconds": 60,
+
   "enable_auth": true,
   "enable_process": true,
   "enable_network": true,
