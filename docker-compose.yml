@@ -1,34 +1,30 @@
 services:
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: siem-backend:latest
     container_name: scriem-backend
     ports:
       - "9000:9000"
     environment:
-      # DB
+      # DB (SQLite inside container, persisted via bind mount)
       - DATABASE_URL=sqlite:////data/siem.db
 
       # Security / Auth
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=${JWT_ALGORITHM}
 
-      # CORS
+      # CORS (keep this permissive for local; tighten later)
       - ALLOW_ORIGINS=${ALLOW_ORIGINS}
 
       # App runtime
       - APP_ENV=production
       - LOG_LEVEL=${LOG_LEVEL}
     volumes:
-      # persist sqlite DB outside container
+      # Persist sqlite DB outside container
       - ./siem.db:/data/siem.db
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./scriem-ui
-      dockerfile: Dockerfile
+    image: siem-frontend:latest
     container_name: scriem-frontend
     ports:
       - "8080:80"

@@ -5,22 +5,20 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# System deps (bcrypt/crypto libs sometimes need these)
+# Install only minimal runtime deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+    libffi-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend code
 COPY app /app/app
 COPY seed_rbac_users.py /app/seed_rbac_users.py
 
-# Create data dir for sqlite mount
 RUN mkdir -p /data
 
 EXPOSE 9000
 
-# Production server
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9000"]

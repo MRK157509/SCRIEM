@@ -1,0 +1,9 @@
+.venv
+__pycache__
+*.pyc
+node_modules
+scriem-ui/node_modules
+scriem-ui/dist
+logs
+tests/__pycache__
+.git
