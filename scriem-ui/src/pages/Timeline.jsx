@@ -8,7 +8,7 @@ import { searchTimeline } from "../lib/api";
 
 import { createCase, addItemsToCase } from "../lib/cases";
 
-const LS_LAST_Q = "scriem:timeline:lastQuery";
+const LS_LAST_Q = null;
 const LS_PINS = "scriem:timeline:pins:v1";
 
 // Notes persistence key (drawer notes)
@@ -158,14 +158,10 @@ export default function Timeline() {
   const applySearch = (nextFilters, nextFreeText) => {
   const q = buildQuery(nextFilters, nextFreeText).trim();
 
-  // Save only non-empty queries for restore behavior
   if (q) {
-    localStorage.setItem(LS_LAST_Q, q);
     navigate(`/timeline?q=${encodeURIComponent(q)}`);
   } else {
-    // Empty query should mean: show recent timeline items
-    localStorage.removeItem(LS_LAST_Q);
-    navigate(`/timeline`, { replace: false });
+    navigate(`/timeline`);
   }
 };
 
@@ -174,18 +170,6 @@ export default function Timeline() {
     setFilters(parsed.filters);
     setFreeText(parsed.freeText);
   }, [parsed.filters, parsed.freeText]);
-
-  // Restore last query if user lands on /timeline with no q
-  useEffect(() => {
-  if (rawQ) return;
-  const last = (localStorage.getItem(LS_LAST_Q) || "").trim();
-
-  // Only restore a real previous search.
-  // Otherwise stay on /timeline and let backend return recent items.
-  if (last) {
-    navigate(`/timeline?q=${encodeURIComponent(last)}`, { replace: true });
-  }
-}, [rawQ, navigate]);
 
 // Fetch from backend
 useEffect(() => {
@@ -196,7 +180,6 @@ useEffect(() => {
     setLoading(true);
 
     try {
-      // Empty query should fetch recent timeline items
       const data = await searchTimeline(rawQ || "");
       if (cancelled) return;
 
