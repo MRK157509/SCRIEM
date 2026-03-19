@@ -1,6 +1,6 @@
 ﻿{
   "server_base": "http://127.0.0.1:9000",
-  "agent_token": "FrJJol52MfEfZpd9WiIexu39-p2tDIMauqLGGWS9CWg",
+  "agent_token": "Msc2KO3gtMHumPSVx_0VJlw_PRzmS9fRrKnl3ZJb6w0",
 
   "batch_size": 25,
   "interval_seconds": 2,

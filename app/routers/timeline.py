@@ -14,7 +14,7 @@ router = APIRouter(prefix="/timeline", tags=["Timeline"])
 def _event_to_dict(e: Event) -> dict:
     return {
         "id": e.id,
-        "event_id": e.event_id,
+        "event_id": e.id,  # Event model uses `id`, not `event_id`
         "event_type": e.event_type,
         "host": e.host,
         "user": e.user,
@@ -42,7 +42,7 @@ def _alert_to_dict(a: Alert) -> dict:
 
 @router.get("/search")
 def search_timeline(
-    q: str = Query("", min_length=1),
+    q: str = Query("", min_length=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
     principal: dict = Depends(require_principal),
@@ -50,38 +50,53 @@ def search_timeline(
     role = principal["role"]
     query = q.strip()
 
-    events = (
-        db.query(Event)
-        .filter(
-            or_(
-                Event.event_type.ilike(f"%{query}%"),
-                Event.host.ilike(f"%{query}%"),
-                Event.user.ilike(f"%{query}%"),
-                Event.action.ilike(f"%{query}%"),
+    if query:
+        events = (
+            db.query(Event)
+            .filter(
+                or_(
+                    Event.event_type.ilike(f"%{query}%"),
+                    Event.host.ilike(f"%{query}%"),
+                    Event.user.ilike(f"%{query}%"),
+                    Event.action.ilike(f"%{query}%"),
+                )
             )
+            .order_by(Event.id.desc())
+            .limit(limit)
+            .all()
         )
-        .order_by(Event.id.desc())
-        .limit(limit)
-        .all()
-    )
 
-    alerts = (
-        db.query(Alert)
-        .filter(
-            or_(
-                Alert.title.ilike(f"%{query}%"),
-                Alert.host.ilike(f"%{query}%"),
-                Alert.severity.ilike(f"%{query}%"),
-                Alert.status.ilike(f"%{query}%"),
-                Alert.description.ilike(f"%{query}%"),
-                Alert.rule_name.ilike(f"%{query}%"),
-                Alert.notes.ilike(f"%{query}%"),
+        alerts = (
+            db.query(Alert)
+            .filter(
+                or_(
+                    Alert.title.ilike(f"%{query}%"),
+                    Alert.host.ilike(f"%{query}%"),
+                    Alert.severity.ilike(f"%{query}%"),
+                    Alert.status.ilike(f"%{query}%"),
+                    Alert.description.ilike(f"%{query}%"),
+                    Alert.rule_name.ilike(f"%{query}%"),
+                    Alert.notes.ilike(f"%{query}%"),
+                )
             )
+            .order_by(Alert.id.desc())
+            .limit(limit)
+            .all()
         )
-        .order_by(Alert.id.desc())
-        .limit(limit)
-        .all()
-    )
+    else:
+        events = (
+            db.query(Event)
+            .order_by(Event.id.desc())
+            .limit(limit)
+            .all()
+        )
+
+        alerts = (
+            db.query(Alert)
+            .order_by(Alert.id.desc())
+            .limit(limit)
+            .all()
+        )
 
     ev_payload = [redact_event(_event_to_dict(e), role) for e in events]
     al_payload = [redact_alert(_alert_to_dict(a), role) for a in alerts]

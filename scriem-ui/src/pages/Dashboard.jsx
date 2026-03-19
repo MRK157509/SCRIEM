@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { kpis, latestAlerts, systemHealth, topEntities } from "../data/dashboardmock";
 
 import KpiCard from "../components/dashboard/KpiCard";
 import LatestAlertsTable from "../components/dashboard/LatestAlertsTable";
@@ -10,7 +9,6 @@ import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
 
 function makeStableKey(alert) {
-  // ✅ no timestamps
   return String(
     alert?.id ||
       alert?._id ||
@@ -24,6 +22,12 @@ function makeStableKey(alert) {
 export default function Dashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
+
+  // Production-safe empty state until live dashboard API is wired
+  const kpis = [];
+  const latestAlerts = [];
+  const systemHealth = [];
+  const topEntities = [];
 
   const openDrawerWithAlert = (alert) => {
     const stableKey = makeStableKey(alert);
@@ -43,20 +47,26 @@ export default function Dashboard() {
         <div className="flex items-center gap-2 text-xs text-white/60">
           <span className="text-white/40">EPS:</span>
           <span className="px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-white/80 tabular-nums">
-            1,890
+            --
           </span>
           <span className="px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-white/80">
-            30s
+            Live
           </span>
         </div>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-        {kpis.map((k) => (
-          <KpiCard key={k.key} {...k} />
-        ))}
-      </div>
+      {/* KPI cards / empty state */}
+      {kpis.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+          {kpis.map((k, index) => (
+            <KpiCard key={k.key || index} {...k} />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+          No dashboard KPI data is available yet. Live dashboard metrics will appear here once the dashboard API is connected.
+        </div>
+      )}
 
       {/* Action bar */}
       <div className="flex flex-wrap gap-2">
@@ -74,12 +84,31 @@ export default function Dashboard() {
       {/* Main grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2">
-          <LatestAlertsTable rows={latestAlerts} onRowClick={openDrawerWithAlert} />
+          {latestAlerts.length > 0 ? (
+            <LatestAlertsTable rows={latestAlerts} onRowClick={openDrawerWithAlert} />
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+              No alert data is available yet. Real alerts will appear here when detection rules are present and events trigger them.
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
-          <SystemHealthWidget items={systemHealth} />
-          <TopEntitiesWidget data={topEntities} />
+          {systemHealth.length > 0 ? (
+            <SystemHealthWidget items={systemHealth} />
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+              System health data is not connected yet.
+            </div>
+          )}
+
+          {topEntities.length > 0 ? (
+            <TopEntitiesWidget data={topEntities} />
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+              Top entities will appear here once live aggregation is wired.
+            </div>
+          )}
         </div>
       </div>
 

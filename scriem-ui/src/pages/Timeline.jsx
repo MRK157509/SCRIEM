@@ -156,11 +156,18 @@ export default function Timeline() {
   const pinnedKeySet = useMemo(() => new Set(pins.map((p) => p.key)), [pins]);
 
   const applySearch = (nextFilters, nextFreeText) => {
-    const q = buildQuery(nextFilters, nextFreeText);
-    if (!q) return;
+  const q = buildQuery(nextFilters, nextFreeText).trim();
+
+  // Save only non-empty queries for restore behavior
+  if (q) {
     localStorage.setItem(LS_LAST_Q, q);
     navigate(`/timeline?q=${encodeURIComponent(q)}`);
-  };
+  } else {
+    // Empty query should mean: show recent timeline items
+    localStorage.removeItem(LS_LAST_Q);
+    navigate(`/timeline`, { replace: false });
+  }
+};
 
   // Sync UI state when URL changes
   useEffect(() => {
@@ -170,48 +177,46 @@ export default function Timeline() {
 
   // Restore last query if user lands on /timeline with no q
   useEffect(() => {
-    if (rawQ) return;
-    const last = (localStorage.getItem(LS_LAST_Q) || "").trim();
-    const fallback = "HIGH";
-    const q = last || fallback;
-    navigate(`/timeline?q=${encodeURIComponent(q)}`, { replace: true });
-  }, [rawQ, navigate]);
+  if (rawQ) return;
+  const last = (localStorage.getItem(LS_LAST_Q) || "").trim();
 
-  // Fetch from backend
-  useEffect(() => {
-    let cancelled = false;
+  // Only restore a real previous search.
+  // Otherwise stay on /timeline and let backend return recent items.
+  if (last) {
+    navigate(`/timeline?q=${encodeURIComponent(last)}`, { replace: true });
+  }
+}, [rawQ, navigate]);
 
-    async function fetchNow() {
-      setError("");
+// Fetch from backend
+useEffect(() => {
+  let cancelled = false;
 
-      if (!rawQ) {
-        setAlerts([]);
-        setEvents([]);
-        return;
-      }
+  async function fetchNow() {
+    setError("");
+    setLoading(true);
 
-      setLoading(true);
-      try {
-        const data = await searchTimeline(rawQ);
-        if (cancelled) return;
+    try {
+      // Empty query should fetch recent timeline items
+      const data = await searchTimeline(rawQ || "");
+      if (cancelled) return;
 
-        setAlerts(Array.isArray(data?.alerts) ? data.alerts : []);
-        setEvents(Array.isArray(data?.events) ? data.events : []);
-      } catch (e) {
-        if (cancelled) return;
-        setAlerts([]);
-        setEvents([]);
-        setError(e?.message || "Timeline search failed");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      setAlerts(Array.isArray(data?.alerts) ? data.alerts : []);
+      setEvents(Array.isArray(data?.events) ? data.events : []);
+    } catch (e) {
+      if (cancelled) return;
+      setAlerts([]);
+      setEvents([]);
+      setError(e?.message || "Timeline search failed");
+    } finally {
+      if (!cancelled) setLoading(false);
     }
+  }
 
-    fetchNow();
-    return () => {
-      cancelled = true;
-    };
-  }, [rawQ]);
+  fetchNow();
+  return () => {
+    cancelled = true;
+  };
+}, [rawQ]);
 
   // Frontend filter pass
   const filteredAlerts = useMemo(
