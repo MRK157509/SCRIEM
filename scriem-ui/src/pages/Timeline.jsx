@@ -165,6 +165,13 @@ export default function Timeline() {
   }
 };
 
+const clearAllSearch = () => {
+  const emptyFilters = { host: "", severity: "", status: "", user: "" };
+  setFilters(emptyFilters);
+  setFreeText("");
+  navigate("/timeline");
+};
+
   // Sync UI state when URL changes
   useEffect(() => {
     setFilters(parsed.filters);
@@ -412,8 +419,22 @@ useEffect(() => {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          applySearch(filters, freeText);
-        }}
+         
+          const noFreeText = !freeText.trim();
+          const noFilters =
+          !filters.host.trim() &&
+          !filters.user.trim() &&
+          !filters.severity.trim() &&
+          !filters.status.trim();
+
+        if (noFreeText && noFilters) {
+          clearAllSearch();
+          return;
+       }
+
+    applySearch(filters, freeText);
+  }}
+        
         className="border border-slate-800 rounded-2xl bg-slate-950/40 p-3"
       >
         <div className="flex flex-col xl:flex-row gap-3">
@@ -506,7 +527,18 @@ useEffect(() => {
               status:{filters.status} ✕
             </button>
           )}
-
+          {/* 🔥 ADD THIS */}
+          {(filters.host || filters.user || filters.severity || filters.status || freeText) && (
+            <button
+              type="button"
+              onClick={clearAllSearch}
+              className="px-3 py-1 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+          >
+              Clear All
+            </button>
+            )}
+        
+ 
           <span className="px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-white/50">
             URL query: <span className="text-white/80">{rawQ || "—"}</span>
           </span>
