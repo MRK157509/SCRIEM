@@ -2,11 +2,13 @@
 
 import random
 import time
+import os
 import requests
 from datetime import datetime, timezone
 
 BASE = "http://127.0.0.1:9000"
-HEADERS = {"x-api-key": "scriem-secret-key"}
+AGENT_TOKEN = os.getenv("SCRIEM_AGENT_TOKEN", "").strip()
+HEADERS = {"Authorization": f"Bearer {AGENT_TOKEN}"} if AGENT_TOKEN else {}
 
 HOSTS = [
     "WIN-DC01",
@@ -91,6 +93,9 @@ EVENT_GENERATORS = [
 ]
 
 def send_event(event):
+    if not AGENT_TOKEN:
+        raise RuntimeError("Set SCRIEM_AGENT_TOKEN before running the simulator")
+
     try:
         r = requests.post(f"{BASE}/events", json=event, headers=HEADERS, timeout=5)
         print(f"[{r.status_code}] {event['event_type']} | {event['action']}")

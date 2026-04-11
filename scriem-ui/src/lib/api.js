@@ -17,7 +17,9 @@ export function setToken(token) {
   try {
     if (!token) localStorage.removeItem(TOKEN_KEY);
     else localStorage.setItem(TOKEN_KEY, token);
-  } catch {}
+  } catch {
+    // ignore storage failures
+  }
 }
 
 export function clearAuth() {
@@ -25,7 +27,9 @@ export function clearAuth() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem("scriem.auth.role"); // if you store role
     localStorage.removeItem("scriem.auth.user"); // if you store username
-  } catch {}
+  } catch {
+    // ignore storage failures
+  }
 }
 
 function redirectToLogin() {
@@ -78,6 +82,10 @@ export function fetchAlerts(status) {
   return apiFetch(`/api/alerts/${qs}`);
 }
 
+export function fetchMetricsSummary() {
+  return apiFetch("/api/metrics/summary");
+}
+
 export function updateAlert(alertId, { status, notes } = {}) {
   // your backend uses query params for patch (status, notes)
   const sp = new URLSearchParams();
@@ -120,7 +128,9 @@ export async function login(username, password) {
   try {
     if (data?.role) localStorage.setItem("scriem.auth.role", data.role);
     if (username) localStorage.setItem("scriem.auth.user", username);
-  } catch {}
+  } catch {
+    // ignore storage failures
+  }
 
   return data;
 }

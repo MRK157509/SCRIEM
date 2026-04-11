@@ -7,7 +7,7 @@ const dotTone = {
 
 export default function SystemHealthWidget({ items }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-[28px] border border-white/10 bg-slate-950/60 p-4">
       <div className="text-white font-semibold">System Health</div>
       <div className="mt-3 space-y-3">
         {items.map((it) => (

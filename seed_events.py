@@ -1,10 +1,14 @@
-﻿import random
-import requests
+import random
 from datetime import datetime, timezone
 
-BASE = "http://127.0.0.1:9000"
-HEADERS = {"x-api-key": "scriem-secret-key"}  # required by your backend
+import requests
 
+from app.database import SessionLocal
+from app.models.agent import Agent
+from app.security import generate_agent_token, hash_token
+
+BASE = "http://127.0.0.1:9000"
+AGENT_NAME = "seed-agent"
 
 hosts = ["lab-host", "win-laptop-01", "win-laptop-02", "server-2", "server-3", "srv-db-1"]
 users = ["alice", "bob", "charlie", "admin", "svc-web", "dbadmin"]
@@ -43,8 +47,6 @@ def build_events(n=200):
         ip = rand_ip()
         msg = msg_t.format(user=user, ip=ip, blob=rand_blob())
 
-        # Use common field names across your project
-        # Include extra optional fields (most pydantic models ignore unknowns)
         events.append(
             {
                 "host": host,
@@ -60,47 +62,53 @@ def build_events(n=200):
     return events
 
 
-def post_batch(events):
-    url = f"{BASE}/events/batch"
+def ensure_seed_agent_token():
+    db = SessionLocal()
+    try:
+        token = generate_agent_token()
+        now = datetime.now(timezone.utc)
 
-    # Try 1: wrapper { "events": [...] }
-    r = requests.post(url, json={"events": events}, headers=HEADERS, timeout=30)
-    if r.status_code != 422:
-        return r
-
-    # Try 2: raw list [...]
-    r2 = requests.post(url, json=events, headers=HEADERS, timeout=30)
-    if r2.status_code != 422:
-        return r2
-
-    # Still 422 => print details and fall back to single ingest
-    return r2
-
-
-def post_single(events):
-    url = f"{BASE}/events"
-    ok = 0
-    for e in events:
-        r = requests.post(url, json=e, headers=HEADERS, timeout=10)
-        if r.status_code in (200, 201):
-            ok += 1
+        agent = db.query(Agent).filter(Agent.name == AGENT_NAME).one_or_none()
+        if agent is None:
+            agent = Agent(
+                name=AGENT_NAME,
+                description="Local seed ingest agent",
+                host="seed-host",
+                ip="127.0.0.1",
+                version="seed",
+                environment="dev",
+                token_hash=hash_token(token),
+                is_active=True,
+                created_at=now,
+                last_seen=now,
+                token_last_rotated=now,
+            )
+            db.add(agent)
         else:
-            # show first failure and stop
-            print("Single ingest failed:")
-            print("status=", r.status_code)
-            print(r.text[:800])
-            return False
-    print(f"Single ingest succeeded: {ok}/{len(events)}")
-    return True
+            agent.token_hash = hash_token(token)
+            agent.is_active = True
+            agent.last_seen = now
+            agent.token_last_rotated = now
+            db.add(agent)
+
+        db.commit()
+        return token
+    finally:
+        db.close()
+
+
+def post_batch(events, token):
+    url = f"{BASE}/events/batch"
+    headers = {"Authorization": f"Bearer {token}"}
+    return requests.post(url, json={"events": events}, headers=headers, timeout=30)
 
 
 if __name__ == "__main__":
     events = build_events(200)
+    token = ensure_seed_agent_token()
 
-    r = post_batch(events)
+    r = post_batch(events, token)
     print("batch status=", r.status_code)
     print(r.text[:800])
-
-    if r.status_code == 422:
-        print("\nBatch shape mismatch (422). Falling back to single /events ingest...\n")
-        post_single(events)
+    print("\nSeed agent token (store this if you want to reuse the simulator):")
+    print(token)

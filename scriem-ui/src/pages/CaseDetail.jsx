@@ -5,16 +5,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
 
-import { getCaseById, updateCaseNotes, addItemsToCase } from "../lib/cases";
+import { getCaseById, updateCaseNotes } from "../lib/cases";
 import { canCopyEvidenceJson, canSeeRaw } from "../lib/rbac";
-
-function safeJsonParse(s, fallback) {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return fallback;
-  }
-}
 
 function isAlert(item) {
   return !!item?.title;
@@ -137,7 +129,7 @@ export default function CaseDetail() {
         <div>
           <div className="text-white text-2xl font-semibold">{caze.title}</div>
           <div className="text-white/50 text-sm">
-            {caze.id} • Created {caze.created_at || "—"}
+            {caze.id} • Created {caze.createdAt || caze.created_at || "—"}
           </div>
           {caze.description && (
             <div className="text-white/70 text-sm mt-2 whitespace-pre-line">

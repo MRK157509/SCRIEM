@@ -16,16 +16,16 @@ export default function KpiCard({ label, value, delta, tone = "blue" }) {
   return (
     <button
       className={[
-        "text-left rounded-2xl p-4 border border-white/10 bg-white/5 ring-1 transition",
-        "hover:bg-white/7 hover:border-white/15",
+        "text-left rounded-3xl p-4 border border-white/10 bg-slate-950/60 ring-1 transition shadow-[0_16px_60px_rgba(0,0,0,0.18)]",
+        "hover:bg-white/7 hover:border-white/15 hover:-translate-y-0.5",
         toneRing[tone] || toneRing.blue,
         toneGlow[tone] || toneGlow.blue,
       ].join(" ")}
     >
-      <div className="text-sm text-white/70">{label}</div>
+      <div className="text-[11px] uppercase tracking-[0.24em] text-white/45">{label}</div>
       <div className="mt-2 flex items-end justify-between gap-3">
         <div className="text-2xl font-semibold tracking-tight text-white">{value}</div>
-        <div className="text-xs text-white/60">{delta}</div>
+        <div className="text-xs text-white/60 max-w-[45%] text-right">{delta}</div>
       </div>
     </button>
   );

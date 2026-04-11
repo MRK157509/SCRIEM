@@ -1,9 +1,9 @@
 export default function LatestAlertsTable({ rows = [], onRowClick }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.04)] overflow-hidden">
-      <div className="px-4 py-3 flex items-center justify-between border-b border-white/10">
+    <div className="rounded-[28px] border border-white/10 bg-slate-950/60 backdrop-blur-xl shadow-[0_16px_60px_rgba(0,0,0,0.18)] overflow-hidden">
+      <div className="px-5 py-4 flex items-center justify-between border-b border-white/10 bg-white/5">
         <div className="text-white font-semibold">SOC Activity</div>
-        <div className="text-xs text-white/50">Latest Alerts</div>
+        <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Latest alerts</div>
       </div>
 
       <div className="overflow-x-auto">

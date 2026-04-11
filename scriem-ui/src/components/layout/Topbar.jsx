@@ -32,53 +32,57 @@ export default function Topbar() {
   const badgeCls = useMemo(() => roleBadgeClass(snap.role), [snap.role]);
 
   return (
-    <header className="h-16 flex items-center justify-between px-6 border-b border-white/10 bg-black/25 backdrop-blur">
-      {/* Left */}
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="text-white/70 text-sm">SOC Overview</div>
+    <header className="h-16 flex items-center justify-between px-4 sm:px-6 border-b border-white/10 bg-slate-950/55 backdrop-blur-xl">
+      <div className="flex items-center gap-4 min-w-0">
+        <div className="hidden md:flex flex-col">
+          <div className="text-[10px] uppercase tracking-[0.35em] text-white/35">
+            Mission Control
+          </div>
+          <div className="text-white/72 text-sm">
+            Alerts, timelines, cases, and AI analysis in one workspace
+          </div>
+        </div>
 
-        {/* Role + user */}
+        <div className="md:hidden text-white/80 text-sm">SOC Overview</div>
+
         <div className="hidden sm:flex items-center gap-2 min-w-0">
-          <span
-            className={`px-2 py-0.5 text-[11px] rounded-md border ${badgeCls}`}
-            title="Role"
-          >
+          <span className={`px-2 py-0.5 text-[11px] rounded-full border ${badgeCls}`} title="Role">
             {snap.role}
           </span>
           <span className="text-white/50 text-xs truncate" title="Username">
-            {snap.user}
+            {snap.user || "anonymous"}
           </span>
         </div>
       </div>
 
-      {/* Right */}
-      <div className="flex items-center gap-3">
-        {/* Refresh */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-2xl border border-white/10 bg-white/5 text-xs text-white/60">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,0.12)]" />
+          Live
+        </div>
+
         <button
-          className="h-10 px-3 rounded-xl border border-white/10 bg-white/5 text-white/70 flex items-center gap-2 hover:bg-white/10 hover:text-white transition"
-          title="Refresh interval (UI placeholder)"
+          className="h-10 px-3 rounded-2xl border border-white/10 bg-white/5 text-white/70 flex items-center gap-2 hover:bg-white/10 hover:text-white transition"
+          title="Refresh interval"
         >
           <Icon name="refresh" size={16} />
-          30s
+          <span className="hidden sm:inline">30s</span>
         </button>
 
-        {/* Notifications */}
         <button
-          className="h-10 w-10 rounded-xl border border-white/10 bg-white/5 grid place-items-center hover:bg-white/10 transition"
-          title="Notifications (UI placeholder)"
+          className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 grid place-items-center hover:bg-white/10 transition"
+          title="Notifications"
         >
           <Icon name="bell" size={18} />
         </button>
 
-        {/* Logout */}
         {snap.loggedIn ? (
           <button
             onClick={() => {
               clearSession();
-              // Hard reset so any cached state clears cleanly
               window.location.href = "/";
             }}
-            className="h-10 px-3 rounded-xl border border-white/10 bg-white/5 text-white/70 flex items-center gap-2 hover:bg-white/10 hover:text-white transition"
+            className="h-10 px-3 rounded-2xl border border-white/10 bg-white/5 text-white/70 flex items-center gap-2 hover:bg-white/10 hover:text-white transition"
             title="Logout"
           >
             <Icon name="logout" size={16} />

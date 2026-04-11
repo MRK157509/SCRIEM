@@ -4,7 +4,7 @@ def _get(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 # Database
-DATABASE_URL = _get("DATABASE_URL", "sqlite:///./siem.db")
+DATABASE_URL = _get("DATABASE_URL", "sqlite:///./data/scriem.sqlite3")
 
 # JWT (UI auth)
 JWT_SECRET = _get("JWT_SECRET", "dev-secret-change-me")

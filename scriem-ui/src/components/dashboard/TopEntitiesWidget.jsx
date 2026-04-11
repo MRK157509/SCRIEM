@@ -11,11 +11,11 @@ export default function TopEntitiesWidget({ data }) {
   ];
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-[28px] border border-white/10 bg-slate-950/60 p-4">
       <div className="flex items-center justify-between">
         <div className="text-white font-semibold">Top Entities (24h)</div>
 
-        <div className="flex gap-1 rounded-xl bg-black/20 p-1 border border-white/10">
+        <div className="flex gap-1 rounded-2xl bg-black/20 p-1 border border-white/10">
           {tabs.map((t) => (
             <button
               key={t.key}

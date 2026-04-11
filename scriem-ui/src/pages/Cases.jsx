@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
 
-import { getCases, getCaseById, updateCaseNotes } from "../lib/cases";
+import { getCases, getCaseById, updateCaseNotes, createCase } from "../lib/cases";
 import { canCopyEvidenceJson } from "../lib/rbac";
+import { fetchAlerts } from "../lib/api";
 
 
 function badgeClasses(type, value) {
@@ -99,7 +100,6 @@ function notesKey(scriemKey) {
 
 export default function Cases() {
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [cases, setCases] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -140,6 +140,41 @@ export default function Cases() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Seed a starter case from live alerts so the workspace is not empty on first visit.
+  useEffect(() => {
+    const hasSeeded = localStorage.getItem("scriem:cases:seeded:v1") === "1";
+    if (hasSeeded || cases.length > 0) return;
+
+    let cancelled = false;
+
+    async function seedStarterCase() {
+      try {
+        const alerts = await fetchAlerts();
+        const rows = Array.isArray(alerts) ? alerts : alerts?.alerts || [];
+        const items = rows.slice(0, 3);
+        if (!cancelled && items.length) {
+          const c = createCase({
+            title: "Starter Investigation",
+            description: "Auto-seeded from live alerts so the case workspace has a starting point.",
+            severity: items[0]?.severity || "MEDIUM",
+            status: "OPEN",
+            items,
+          });
+          setCases(getCases());
+          setSelectedId(c.id);
+          localStorage.setItem("scriem:cases:seeded:v1", "1");
+        }
+      } catch {
+        // ignore seed failure
+      }
+    }
+
+    seedStarterCase();
+    return () => {
+      cancelled = true;
+    };
+  }, [cases.length]);
+
   // When selection changes, sync notes draft
   useEffect(() => {
     if (!selectedId) return;
@@ -171,7 +206,7 @@ export default function Cases() {
   const selected = useMemo(() => {
     if (!selectedId) return null;
     return getCaseById(selectedId);
-  }, [selectedId, cases]);
+  }, [selectedId]);
 
   function refresh() {
     const list = getCases();
@@ -423,13 +458,13 @@ export default function Cases() {
                             </button>
 
                             {canCopyEvidenceJson() && (
-  <button
-    onClick={() => copyJson(item)}
-    className="..."
-  >
-    Copy JSON
-  </button>
-)}
+                              <button
+                                onClick={() => copyItemJson(it)}
+                                className="px-3 py-1 text-xs rounded-lg border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 transition"
+                              >
+                                Copy JSON
+                              </button>
+                            )}
 
                           </div>
                         </div>

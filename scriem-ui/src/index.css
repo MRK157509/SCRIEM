@@ -1,7 +1,97 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: dark;
+  --bg: #050814;
+  --bg-soft: #0a1120;
+  --panel: rgba(8, 15, 30, 0.82);
+  --panel-strong: rgba(5, 9, 20, 0.96);
+  --border: rgba(148, 163, 184, 0.14);
+  --text: #eef4ff;
+  --muted: rgba(226, 232, 240, 0.64);
+  --cyan: #22d3ee;
+  --emerald: #34d399;
+  --amber: #f59e0b;
+  --rose: #fb7185;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 32%),
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.14), transparent 24%),
+    linear-gradient(180deg, #07101f 0%, #04070f 100%);
+  min-height: 100%;
+}
+
 body {
-  background-color: #0b1220;
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  color: var(--text);
+  font-family:
+    "Inter",
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(34, 211, 238, 0.14), transparent 0 24%),
+    radial-gradient(circle at 80% 0%, rgba(34, 197, 94, 0.1), transparent 0 18%),
+    linear-gradient(180deg, #07101f 0%, #04070f 100%);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 88px 88px;
+  mask-image: radial-gradient(circle at center, black 45%, transparent 100%);
+  opacity: 0.18;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.28);
   color: white;
-  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.36);
 }

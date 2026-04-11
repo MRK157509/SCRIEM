@@ -273,11 +273,6 @@ useEffect(() => {
     });
   };
 
-  const onFocus = (item, key) => {
-    setFocusItem(item);
-    setFocusKey(key);
-  };
-
   // Context summary derived from focus item (or filters)
   const context = useMemo(() => {
     const host = focusItem?.host || filters.host || "";

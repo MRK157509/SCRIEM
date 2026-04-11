@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import random
 import requests
@@ -11,7 +12,8 @@ def load_config(path="config.example.json"):
 def send_event(base_url: str, event: dict, retries=5):
     url = f"{base_url}/events"
     delay = 1  # initial backoff delay (seconds)
-    headers = {"x-api-key": "scriem-secret-key"}
+    token = os.getenv("SCRIEM_AGENT_TOKEN", "").strip()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     for attempt in range(1, retries + 1):
         try:
@@ -68,7 +70,8 @@ def main():
 
             try:
                 url = f"{base_url}/events/batch"
-                headers = {"x-api-key": "scriem-secret-key"}
+                token = os.getenv("SCRIEM_AGENT_TOKEN", "").strip()
+                headers = {"Authorization": f"Bearer {token}"} if token else {}
                 r = requests.post(url, json=payload, headers=headers, timeout=10)
                 r.raise_for_status()
                 print("[BATCH OK]", r.json())

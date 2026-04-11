@@ -39,7 +39,9 @@ export function setSession({ token, role, username }) {
     if (token) localStorage.setItem(TOKEN_KEY, token);
     if (role) localStorage.setItem(ROLE_KEY, String(role).toUpperCase());
     if (username) localStorage.setItem(USER_KEY, String(username));
-  } catch {}
+  } catch {
+    // ignore storage failures
+  }
 
   window.dispatchEvent(new Event("scriem:auth:changed"));
 }
@@ -49,7 +51,9 @@ export function clearSession() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ROLE_KEY);
     localStorage.removeItem(USER_KEY);
-  } catch {}
+  } catch {
+    // ignore storage failures
+  }
 
   window.dispatchEvent(new Event("scriem:auth:changed"));
 }

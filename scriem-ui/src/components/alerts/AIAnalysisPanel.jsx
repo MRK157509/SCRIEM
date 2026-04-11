@@ -44,7 +44,7 @@ export default function AIAnalysisPanel({ alertId }) {
   }, [alertId]);
 
   return (
-    <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="mt-4 rounded-[28px] border border-white/10 bg-black/20 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-white font-semibold">AI Analysis</div>
@@ -59,7 +59,7 @@ export default function AIAnalysisPanel({ alertId }) {
         <button
           onClick={onReanalyze}
           disabled={loading || reanalyzing || !alertId}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-50"
+          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-50"
         >
           {reanalyzing ? "Re-analyzing..." : "Re-analyze"}
         </button>
