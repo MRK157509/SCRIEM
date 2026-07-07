@@ -15,6 +15,7 @@ except Exception as e:
 try:
     # loads new modular models (Phase 6 tables + Phase 7 agents)
     import app.models.alert_ai_analysis  # noqa: F401
+    import app.models.case_record  # noqa: F401
     import app.models.agent  # noqa: F401
 except Exception as e:
     raise RuntimeError(f"Failed to import modular models (app.models.*): {e}")
@@ -135,11 +136,12 @@ app.add_middleware(
 
 
 # Routers (import AFTER models are registered)
-from app.routers import alerts, timeline, events, auth, rules, iocs, metrics, alerts_ai, agents  # noqa: E402
+from app.routers import alerts, timeline, events, auth, rules, iocs, metrics, alerts_ai, agents, cases  # noqa: E402
 
 app.include_router(agents.router)
 app.include_router(auth.router)
 app.include_router(alerts_ai.router)
+app.include_router(cases.router)
 app.include_router(timeline.router)
 app.include_router(events.router)
 app.include_router(rules.router)

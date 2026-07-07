@@ -23,6 +23,8 @@ Base = getattr(_legacy, "Base", None)
 
 # ---- new modular models (Phase 6) ----
 from app.models.alert_ai_analysis import AlertAIAnalysis  # noqa: F401
+from app.models.case_record import CaseRecord  # noqa: F401
+from app.models.agent import Agent  # noqa: F401
 
 __all__ = [
     "Alert",
@@ -34,4 +36,6 @@ __all__ = [
     "User",
     "Base",
     "AlertAIAnalysis",
+    "CaseRecord",
+    "Agent",
 ]

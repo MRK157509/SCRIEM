@@ -1,139 +1,75 @@
-const LS_CASES = "scriem:cases:v1";
+import { apiFetch } from "./api";
 
-function safeParse(raw, fallback) {
-  try {
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
-function loadAll() {
-  return safeParse(localStorage.getItem(LS_CASES), []);
-}
+function normalizeCase(raw) {
+  if (!raw) return null;
 
-function saveAll(cases) {
-  localStorage.setItem(LS_CASES, JSON.stringify(cases));
-}
-
-function makeId() {
-  return `case-${Date.now()}`;
-}
-
-function normalizeItems(items) {
-  const arr = Array.isArray(items) ? items : [];
-  return arr.map((it) => ({
-    kind: it?.kind || (it?.title ? "alert" : "event"),
-    ...it,
-  }));
-}
-
-function stableItemKey(it) {
-  // best-effort de-dupe key
-  return String(
-    it?.__scriemKey ||
-      it?.id ||
-      it?._id ||
-      it?.alert_id ||
-      it?.event_id ||
-      `${it?.title || it?.event_type || "untitled"}|${it?.host || "nohost"}|${it?.user || "nouser"}|${
-        it?.created_at || it?.timestamp || ""
-      }`
-  );
-}
-
-export function getCases() {
-  return loadAll();
-}
-
-export function getCaseById(id) {
-  return loadAll().find((c) => c.id === id) || null;
-}
-
-export function createCase(payload = {}) {
-  const now = new Date().toISOString();
-  const id = payload.id || makeId();
-
-  const newCase = {
-    id,
-    title: payload.title || `Investigation ${new Date().toLocaleString()}`,
-    description: payload.description || "",
-    severity: payload.severity || "MEDIUM",
-    status: payload.status || "OPEN",
-    createdAt: now,
-    updatedAt: now,
-    notes: payload.notes || "",
-    items: normalizeItems(payload.items),
-    timeline: [
-      {
-        at: now,
-        type: "CASE_CREATED",
-        message: "Case created",
-      },
-    ],
+  return {
+    id: raw.id,
+    title: raw.title || `Investigation ${raw.id}`,
+    description: raw.description || "",
+    severity: raw.severity || "MEDIUM",
+    status: raw.status || "OPEN",
+    notes: raw.notes || "",
+    items: safeArray(raw.items),
+    timeline: safeArray(raw.timeline),
+    createdBy: raw.created_by || raw.createdBy || "",
+    updatedBy: raw.updated_by || raw.updatedBy || "",
+    createdAt: raw.created_at || raw.createdAt || null,
+    updatedAt: raw.updated_at || raw.updatedAt || null,
   };
-
-  const all = loadAll();
-  all.unshift(newCase);
-  saveAll(all);
-
-  return newCase;
 }
 
-export function addItemsToCase(caseId, items) {
-  const all = loadAll();
-  const idx = all.findIndex((c) => c.id === caseId);
-  if (idx === -1) return null;
-
-  const c = all[idx];
-  const existing = new Set((c.items || []).map(stableItemKey));
-
-  const incoming = normalizeItems(items);
-  const toAdd = incoming.filter((it) => !existing.has(stableItemKey(it)));
-
-  if (toAdd.length === 0) return c;
-
-  const now = new Date().toISOString();
-  const updated = {
-    ...c,
-    items: [...toAdd, ...(c.items || [])],
-    updatedAt: now,
-    timeline: [
-      {
-        at: now,
-        type: "ITEMS_ADDED",
-        message: `Added ${toAdd.length} item(s)`,
-      },
-      ...(c.timeline || []),
-    ],
-  };
-
-  all[idx] = updated;
-  saveAll(all);
-  return updated;
+function normalizeList(payload) {
+  const rows = Array.isArray(payload) ? payload : payload?.cases || [];
+  return rows.map(normalizeCase).filter(Boolean);
 }
 
-export function updateCaseNotes(caseId, notes) {
-  const all = loadAll();
-  const idx = all.findIndex((c) => c.id === caseId);
-  if (idx === -1) return null;
+export async function getCases() {
+  const data = await apiFetch("/api/cases/");
+  return normalizeList(data);
+}
 
-  const now = new Date().toISOString();
-  const updated = {
-    ...all[idx],
-    notes: String(notes || ""),
-    updatedAt: now,
-    timeline: [
-      {
-        at: now,
-        type: "NOTES_UPDATED",
-        message: "Notes updated",
-      },
-      ...(all[idx].timeline || []),
-    ],
-  };
+export async function getCaseById(caseId) {
+  if (!caseId) return null;
+  const data = await apiFetch(`/api/cases/${encodeURIComponent(caseId)}`);
+  return normalizeCase(data);
+}
 
-  all[idx] = updated;
-  saveAll(all);
-  return updated;
+export async function createCase(payload = {}) {
+  const data = await apiFetch("/api/cases/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return normalizeCase(data);
+}
+
+export async function addItemsToCase(caseId, items) {
+  if (!caseId) return null;
+  const data = await apiFetch(`/api/cases/${encodeURIComponent(caseId)}/items`, {
+    method: "POST",
+    body: JSON.stringify({ items: safeArray(items) }),
+  });
+  return normalizeCase(data);
+}
+
+export async function updateCaseNotes(caseId, notes) {
+  if (!caseId) return null;
+  const data = await apiFetch(`/api/cases/${encodeURIComponent(caseId)}/notes`, {
+    method: "PATCH",
+    body: JSON.stringify({ notes }),
+  });
+  return normalizeCase(data);
+}
+
+export async function updateCase(caseId, updates = {}) {
+  if (!caseId) return null;
+  const data = await apiFetch(`/api/cases/${encodeURIComponent(caseId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+  return normalizeCase(data);
 }

@@ -347,7 +347,7 @@ useEffect(() => {
     alert("✅ Case notes copied to clipboard.");
   };
 
-  const createCaseFromPins = () => {
+  const createCaseFromPins = async () => {
     if (!pins.length) {
       alert("Pin some items first, then create a case.");
       return;
@@ -358,19 +358,22 @@ useEffect(() => {
       ...p.snapshot,
     }));
 
-    const c = createCase({
-      title: `Investigation: ${rawQ || "Timeline"}`,
-      description: `Created from Timeline Investigation Mode.\nQuery: ${rawQ || "—"}`,
-      severity: filters.severity || "MEDIUM",
-      status: "OPEN",
-      items,
-    });
+    try {
+      const c = await createCase({
+        title: `Investigation: ${rawQ || "Timeline"}`,
+        description: `Created from Timeline Investigation Mode.\nQuery: ${rawQ || "—"}`,
+        severity: filters.severity || "MEDIUM",
+        status: "OPEN",
+        items,
+      });
 
-    // ensure de-dupe + timeline entry in case module
-    addItemsToCase(c.id, items);
+      await addItemsToCase(c.id, items);
 
-    alert(`✅ Case created: ${c.id}`);
-    navigate(`/cases/${c.id}`);
+      alert(`✅ Case created: ${c.id}`);
+      navigate(`/cases/${c.id}`);
+    } catch (err) {
+      alert(err?.message || "Could not create case");
+    }
   };
 
   return (

@@ -4,10 +4,9 @@ import { useNavigate } from "react-router-dom";
 import RightDrawer from "../components/drawer/RightDrawer";
 import AlertDrawerContent from "../components/drawer/AlertDrawerContent";
 
-import { getCases, getCaseById, updateCaseNotes, createCase } from "../lib/cases";
+import { createCase, getCases, updateCaseNotes } from "../lib/cases";
 import { canCopyEvidenceJson } from "../lib/rbac";
 import { fetchAlerts } from "../lib/api";
-
 
 function badgeClasses(type, value) {
   const v = String(value || "").toUpperCase();
@@ -52,9 +51,7 @@ function buildTimelineQueryFromItem(it) {
   if (it?.host) parts.push(`host:${it.host}`);
   if (it?.user) parts.push(`user:${it.user}`);
   if (it?.severity) parts.push(`severity:${it.severity}`);
-  // If alert has status, include it (nice pivot)
   if (it?.status) parts.push(`status:${it.status}`);
-  // If none of the above, fallback to free text title/type
   if (parts.length === 0) parts.push(itemTitle(it));
   return parts.join(" ").trim();
 }
@@ -94,8 +91,12 @@ function makeStableKey(item) {
   );
 }
 
-function notesKey(scriemKey) {
-  return `scriem:notes:${scriemKey}`;
+function safeParse(raw, fallback) {
+  try {
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export default function Cases() {
@@ -105,45 +106,95 @@ export default function Cases() {
   const [selectedId, setSelectedId] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
-  // Load list
-  useEffect(() => {
-    const list = getCases();
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    return cases.find((c) => String(c.id) === String(selectedId)) || null;
+  }, [cases, selectedId]);
+
+  async function refreshCases(preferredId = "") {
+    const list = await getCases();
     setCases(list);
 
-    // Default select first case
-    if (!selectedId && list.length) {
-      setSelectedId(list[0].id);
+    const nextSelected = preferredId || selectedId || list[0]?.id || "";
+    setSelectedId(nextSelected ? String(nextSelected) : "");
+    return list;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const list = await getCases();
+        if (cancelled) return;
+        setCases(list);
+        setSelectedId(list[0]?.id ? String(list[0].id) : "");
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
 
-    // refresh if storage changes (multi-tab)
-    const onStorage = (e) => {
-      if (e.key === "scriem:cases:v1") {
-        const refreshed = getCases();
-        setCases(refreshed);
-
-        if (selectedId) {
-          const c = getCaseById(selectedId);
-          setNotesDraft(c?.notes || "");
-        } else if (refreshed.length) {
-          setSelectedId(refreshed[0].id);
-          setNotesDraft(refreshed[0]?.notes || "");
-        }
-      }
+    load();
+    return () => {
+      cancelled = true;
     };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Seed a starter case from live alerts so the workspace is not empty on first visit.
   useEffect(() => {
+    if (!selected) {
+      setNotesDraft("");
+      return;
+    }
+    setNotesDraft(selected.notes || "");
+  }, [selected]);
+
+  useEffect(() => {
+    if (cases.length > 0) return;
+    const hasMigrated = localStorage.getItem("scriem:cases:migrated:v1") === "1";
+    const legacyCases = safeParse(localStorage.getItem("scriem:cases:v1"), []);
+    if (!hasMigrated && Array.isArray(legacyCases) && legacyCases.length > 0) {
+      let cancelled = false;
+
+      async function migrateLegacyCases() {
+        try {
+          const created = [];
+          for (const legacy of legacyCases) {
+            const row = await createCase({
+              id: legacy.id,
+              title: legacy.title || "Investigation",
+              description: legacy.description || "",
+              severity: legacy.severity || "MEDIUM",
+              status: legacy.status || "OPEN",
+              notes: legacy.notes || "",
+              items: legacy.items || [],
+              timeline: legacy.timeline || [],
+            });
+            created.push(row);
+          }
+
+          if (cancelled) return;
+          localStorage.setItem("scriem:cases:migrated:v1", "1");
+          await refreshCases(created[0]?.id || "");
+        } catch (err) {
+          console.error("Legacy case migration failed:", err);
+        }
+      }
+
+      migrateLegacyCases();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const hasSeeded = localStorage.getItem("scriem:cases:seeded:v1") === "1";
-    if (hasSeeded || cases.length > 0) return;
+    if (hasSeeded) return;
 
     let cancelled = false;
 
@@ -152,20 +203,20 @@ export default function Cases() {
         const alerts = await fetchAlerts();
         const rows = Array.isArray(alerts) ? alerts : alerts?.alerts || [];
         const items = rows.slice(0, 3);
-        if (!cancelled && items.length) {
-          const c = createCase({
-            title: "Starter Investigation",
-            description: "Auto-seeded from live alerts so the case workspace has a starting point.",
-            severity: items[0]?.severity || "MEDIUM",
-            status: "OPEN",
-            items,
-          });
-          setCases(getCases());
-          setSelectedId(c.id);
-          localStorage.setItem("scriem:cases:seeded:v1", "1");
-        }
-      } catch {
-        // ignore seed failure
+        if (cancelled || !items.length) return;
+
+        const created = await createCase({
+          title: "Starter Investigation",
+          description: "Auto-seeded from live alerts so the case workspace has a starting point.",
+          severity: items[0]?.severity || "MEDIUM",
+          status: "OPEN",
+          items,
+        });
+
+        localStorage.setItem("scriem:cases:seeded:v1", "1");
+        await refreshCases(created?.id);
+      } catch (err) {
+        console.error(err);
       }
     }
 
@@ -173,14 +224,8 @@ export default function Cases() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cases.length]);
-
-  // When selection changes, sync notes draft
-  useEffect(() => {
-    if (!selectedId) return;
-    const c = getCaseById(selectedId);
-    setNotesDraft(c?.notes || "");
-  }, [selectedId]);
 
   const filteredCases = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -203,32 +248,9 @@ export default function Cases() {
     });
   }, [cases, search]);
 
-  const selected = useMemo(() => {
-    if (!selectedId) return null;
-    return getCaseById(selectedId);
-  }, [selectedId]);
-
-  function refresh() {
-    const list = getCases();
-    setCases(list);
-    if (!selectedId && list.length) setSelectedId(list[0].id);
-  }
-
-  function saveNotes() {
-    if (!selectedId) return;
-    const updated = updateCaseNotes(selectedId, notesDraft);
-    if (!updated) {
-      alert("Case not found. It may have been removed.");
-      return;
-    }
-    refresh();
-    alert("✅ Notes saved");
-  }
-
   function openDrawerForItem(it) {
     const stableKey = makeStableKey(it);
-    const withKey = { ...it, __scriemKey: stableKey };
-    setSelectedItem(withKey);
+    setSelectedItem({ ...it, __scriemKey: stableKey });
     setDrawerOpen(true);
   }
 
@@ -238,10 +260,6 @@ export default function Cases() {
   }
 
   async function copyItemJson(it) {
-    // include persisted drawer notes if present (SOC vibes)
-    const sk = makeStableKey(it);
-    const storedNotes = sk ? localStorage.getItem(notesKey(sk)) || "" : "";
-
     const payload = {
       kind: itemKind(it),
       title: itemTitle(it),
@@ -249,7 +267,6 @@ export default function Cases() {
       user: it?.user || "",
       severity: it?.severity || "",
       status: it?.status || "",
-      analyst_notes: storedNotes || "",
       snapshot: it,
     };
 
@@ -258,9 +275,19 @@ export default function Cases() {
     else alert("✅ Evidence JSON copied");
   }
 
+  async function saveNotes() {
+    if (!selectedId) return;
+    try {
+      const updated = await updateCaseNotes(selectedId, notesDraft);
+      setCases((prev) => prev.map((c) => (String(c.id) === String(updated.id) ? updated : c)));
+      alert("✅ Notes saved");
+    } catch (err) {
+      alert(err?.message || "Unable to save notes");
+    }
+  }
+
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-white text-2xl font-semibold">Cases</div>
@@ -271,7 +298,7 @@ export default function Cases() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={refresh}
+            onClick={() => refreshCases(selectedId)}
             className="h-10 px-4 rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition"
           >
             Refresh
@@ -279,9 +306,7 @@ export default function Cases() {
         </div>
       </div>
 
-      {/* Split layout */}
       <div className="grid gap-4 grid-cols-1 xl:grid-cols-3">
-        {/* LEFT: Case Queue */}
         <div className="xl:col-span-1 border border-slate-800 rounded-2xl bg-slate-950/40 overflow-hidden">
           <div className="p-3 border-b border-slate-800">
             <input
@@ -293,42 +318,36 @@ export default function Cases() {
           </div>
 
           <div className="max-h-[70vh] overflow-y-auto">
-            {filteredCases.length === 0 ? (
+            {loading ? (
+              <div className="p-5 text-white/50 text-sm">Loading cases...</div>
+            ) : filteredCases.length === 0 ? (
               <div className="p-5 text-white/50 text-sm">No cases found.</div>
             ) : (
               <div className="divide-y divide-slate-800">
                 {filteredCases.map((c) => {
-                  const active = c.id === selectedId;
+                  const active = String(c.id) === String(selectedId);
                   return (
                     <button
                       key={c.id}
-                      onClick={() => setSelectedId(c.id)}
-                      className={`w-full text-left p-4 transition ${
-                        active ? "bg-white/10" : "hover:bg-white/5"
-                      }`}
+                      onClick={() => setSelectedId(String(c.id))}
+                      className={`w-full text-left p-4 transition ${active ? "bg-white/10" : "hover:bg-white/5"}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-white font-medium truncate">{c.title}</div>
                           <div className="text-xs text-white/50 mt-1">
-                            {c.id} • {new Date(c.createdAt).toLocaleString()}
+                            {c.id} • {c.createdAt ? new Date(c.createdAt).toLocaleString() : "—"}
                           </div>
                         </div>
 
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           <span
-                            className={`text-[11px] px-2 py-1 rounded-lg ${badgeClasses(
-                              "status",
-                              c.status
-                            )}`}
+                            className={`text-[11px] px-2 py-1 rounded-lg ${badgeClasses("status", c.status)}`}
                           >
                             {safeUpper(c.status || "—")}
                           </span>
                           <span
-                            className={`text-[11px] px-2 py-1 rounded-lg ${badgeClasses(
-                              "severity",
-                              c.severity
-                            )}`}
+                            className={`text-[11px] px-2 py-1 rounded-lg ${badgeClasses("severity", c.severity)}`}
                           >
                             {safeUpper(c.severity || "—")}
                           </span>
@@ -337,8 +356,7 @@ export default function Cases() {
 
                       <div className="mt-2 flex items-center justify-between text-xs text-white/60">
                         <span>
-                          Items:{" "}
-                          <span className="text-white/90">{(c.items || []).length}</span>
+                          Items: <span className="text-white/90">{(c.items || []).length}</span>
                         </span>
                         <span className="text-white/50">
                           Updated:{" "}
@@ -359,7 +377,6 @@ export default function Cases() {
           </div>
         </div>
 
-        {/* RIGHT: Case Workspace */}
         <div className="xl:col-span-2 space-y-4">
           {!selected ? (
             <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-6 text-white/50">
@@ -367,7 +384,6 @@ export default function Cases() {
             </div>
           ) : (
             <>
-              {/* Case meta */}
               <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -375,24 +391,19 @@ export default function Cases() {
                       {selected.title}
                     </div>
                     <div className="text-white/50 text-sm mt-1">
-                      {selected.id} • Created {new Date(selected.createdAt).toLocaleString()}
+                      {selected.id} • Created{" "}
+                      {selected.createdAt ? new Date(selected.createdAt).toLocaleString() : "—"}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
                     <span
-                      className={`text-xs px-2 py-1 rounded-lg ${badgeClasses(
-                        "status",
-                        selected.status
-                      )}`}
+                      className={`text-xs px-2 py-1 rounded-lg ${badgeClasses("status", selected.status)}`}
                     >
                       {safeUpper(selected.status || "—")}
                     </span>
                     <span
-                      className={`text-xs px-2 py-1 rounded-lg ${badgeClasses(
-                        "severity",
-                        selected.severity
-                      )}`}
+                      className={`text-xs px-2 py-1 rounded-lg ${badgeClasses("severity", selected.severity)}`}
                     >
                       {safeUpper(selected.severity || "—")}
                     </span>
@@ -414,9 +425,7 @@ export default function Cases() {
                 ) : null}
               </div>
 
-              {/* Evidence + Notes grid */}
               <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-                {/* Evidence */}
                 <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-white font-semibold">
@@ -433,7 +442,7 @@ export default function Cases() {
                     <div className="space-y-2 max-h-[42vh] overflow-y-auto pr-1">
                       {(selected.items || []).map((it, idx) => (
                         <div
-                          key={idx}
+                          key={it.__scriemKey || idx}
                           className="border border-slate-800 rounded-xl bg-black/20 p-3"
                         >
                           <div className="text-sm text-white/90">{itemLabel(it)}</div>
@@ -465,7 +474,6 @@ export default function Cases() {
                                 Copy JSON
                               </button>
                             )}
-
                           </div>
                         </div>
                       ))}
@@ -473,7 +481,6 @@ export default function Cases() {
                   )}
                 </div>
 
-                {/* Notes */}
                 <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-white font-semibold">Investigation Notes</div>
@@ -494,7 +501,7 @@ export default function Cases() {
                   />
 
                   <div className="mt-2 text-xs text-white/50">
-                    Tip: reference evidence items like “E1, E2…” in your notes.
+                    Tip: the notes are saved to the backend now, so refreshes won’t wipe them.
                   </div>
                 </div>
               </div>
@@ -503,13 +510,13 @@ export default function Cases() {
         </div>
       </div>
 
-      {/* Drawer */}
       <RightDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        title={selectedItem?.title || selectedItem?.event_type || "Evidence Item"}
+        title={selectedItem?.title || selectedItem?.event_type || "Item"}
         severity={selectedItem?.severity}
         item={selectedItem}
+        showMini={false}
       >
         {selectedItem?.title ? (
           <AlertDrawerContent alert={selectedItem} />

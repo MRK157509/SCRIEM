@@ -1,4 +1,3 @@
-// src/pages/CaseDetail.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -52,6 +51,8 @@ export default function CaseDetail() {
 
   const [caze, setCaze] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerItem, setDrawerItem] = useState(null);
@@ -59,14 +60,32 @@ export default function CaseDetail() {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Load case
   useEffect(() => {
-    const c = getCaseById(id);
-    setCaze(c || null);
-    setNotes(c?.notes || "");
-    // default select first evidence
-    const first = (c?.items || [])[0] || null;
-    setSelected(first);
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const c = await getCaseById(id);
+        if (cancelled) return;
+        setCaze(c || null);
+        setNotes(c?.notes || "");
+        setSelected((c?.items || [])[0] || null);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err?.message || "Case not found");
+        setCaze(null);
+        setSelected(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const items = useMemo(() => caze?.items || [], [caze]);
@@ -77,45 +96,40 @@ export default function CaseDetail() {
   };
 
   const pivotToTimeline = (item) => {
-    // Keep it simple: host/user/sev/title search
-    const q =
-      item?.host ||
-      item?.user ||
-      item?.severity ||
-      item?.title ||
-      item?.event_type ||
-      "";
+    const q = item?.host || item?.user || item?.severity || item?.title || item?.event_type || "";
     if (!q) return;
     nav(`/timeline?q=${encodeURIComponent(String(q))}`);
   };
 
   const handleCopyJson = async (item) => {
-    // ✅ RBAC: only ADMIN can copy evidence JSON
     if (!canCopyEvidenceJson()) return;
     const ok = await copyToClipboard(JSON.stringify(item, null, 2));
     alert(ok ? "✅ Evidence JSON copied" : "❌ Copy failed");
   };
 
   const saveNotes = async () => {
+    if (!id) return;
     setSaving(true);
     try {
-      updateCaseNotes(id, notes);
-      // refresh local
-      const c = getCaseById(id);
-      setCaze(c || null);
+      const updated = await updateCaseNotes(id, notes);
+      setCaze(updated);
+      alert("✅ Notes saved");
+    } catch (err) {
+      alert(err?.message || "Unable to save notes");
     } finally {
       setSaving(false);
     }
   };
 
-  if (!caze) {
+  if (loading) {
+    return <div className="text-white/70">Loading case...</div>;
+  }
+
+  if (error || !caze) {
     return (
       <div className="text-white/70">
         Case not found.{" "}
-        <button
-          className="underline text-cyan-300"
-          onClick={() => nav("/cases")}
-        >
+        <button className="underline text-cyan-300" onClick={() => nav("/cases")}>
           Go back
         </button>
       </div>
@@ -124,12 +138,11 @@ export default function CaseDetail() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-white text-2xl font-semibold">{caze.title}</div>
           <div className="text-white/50 text-sm">
-            {caze.id} • Created {caze.createdAt || caze.created_at || "—"}
+            {caze.id} • Created {caze.createdAt || "—"}
           </div>
           {caze.description && (
             <div className="text-white/70 text-sm mt-2 whitespace-pre-line">
@@ -154,14 +167,10 @@ export default function CaseDetail() {
         </div>
       </div>
 
-      {/* 3-column layout */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Evidence list */}
         <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
           <div className="flex items-center justify-between">
-            <div className="text-white font-semibold">
-              Evidence ({items.length})
-            </div>
+            <div className="text-white font-semibold">Evidence ({items.length})</div>
             <div className="text-xs text-white/40">pin-style actions</div>
           </div>
 
@@ -173,7 +182,7 @@ export default function CaseDetail() {
                 const active = selected === it;
                 return (
                   <button
-                    key={idx}
+                    key={it.__scriemKey || idx}
                     onClick={() => setSelected(it)}
                     className={[
                       "w-full text-left p-3 rounded-xl border transition",
@@ -186,9 +195,7 @@ export default function CaseDetail() {
                       {isAlert(it) ? "🔔 " : "🧾 "}
                       {evidenceTitle(it)}
                     </div>
-                    <div className="text-xs text-white/50 mt-1">
-                      {evidenceMeta(it) || "—"}
-                    </div>
+                    <div className="text-xs text-white/50 mt-1">{evidenceMeta(it) || "—"}</div>
                   </button>
                 );
               })
@@ -196,7 +203,6 @@ export default function CaseDetail() {
           </div>
         </div>
 
-        {/* Evidence actions + preview */}
         <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4 space-y-3">
           <div className="text-white font-semibold">Evidence</div>
 
@@ -205,12 +211,8 @@ export default function CaseDetail() {
           ) : (
             <>
               <div className="border border-slate-800 rounded-xl bg-black/20 p-3">
-                <div className="text-white font-medium">
-                  {evidenceTitle(selected)}
-                </div>
-                <div className="text-white/50 text-xs mt-1">
-                  {evidenceMeta(selected) || "—"}
-                </div>
+                <div className="text-white font-medium">{evidenceTitle(selected)}</div>
+                <div className="text-white/50 text-xs mt-1">{evidenceMeta(selected) || "—"}</div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
@@ -227,7 +229,6 @@ export default function CaseDetail() {
                     Pivot to Timeline
                   </button>
 
-                  {/* ✅ RBAC: hide Copy JSON unless ADMIN */}
                   {canCopyEvidenceJson() && (
                     <button
                       onClick={() => handleCopyJson(selected)}
@@ -239,12 +240,9 @@ export default function CaseDetail() {
                 </div>
               </div>
 
-              {/* ✅ RBAC: raw block only for ADMIN */}
               {canSeeRaw() && (
                 <div className="border border-slate-800 rounded-xl bg-black/20 p-3">
-                  <div className="text-white/80 text-sm font-medium mb-2">
-                    Raw details (ADMIN)
-                  </div>
+                  <div className="text-white/80 text-sm font-medium mb-2">Raw details (ADMIN)</div>
                   <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
                     {JSON.stringify(selected, null, 2)}
                   </pre>
@@ -254,7 +252,6 @@ export default function CaseDetail() {
           )}
         </div>
 
-        {/* Notes */}
         <div className="border border-slate-800 rounded-2xl bg-slate-950/40 p-4">
           <div className="flex items-center justify-between">
             <div className="text-white font-semibold">Investigation Notes</div>
@@ -281,7 +278,6 @@ export default function CaseDetail() {
         </div>
       </div>
 
-      {/* Drawer */}
       <RightDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -291,19 +287,12 @@ export default function CaseDetail() {
       >
         {drawerItem && isAlert(drawerItem) ? (
           <AlertDrawerContent alert={drawerItem} />
+        ) : canSeeRaw() ? (
+          <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
+            {JSON.stringify(drawerItem, null, 2)}
+          </pre>
         ) : (
-          <>
-            {/* ✅ RBAC: only ADMIN sees raw in drawer for non-alert */}
-            {canSeeRaw() ? (
-              <pre className="text-xs whitespace-pre-wrap break-words text-white/80">
-                {JSON.stringify(drawerItem, null, 2)}
-              </pre>
-            ) : (
-              <div className="text-white/60 text-sm">
-                Details hidden for your role.
-              </div>
-            )}
-          </>
+          <div className="text-white/60 text-sm">Details hidden for your role.</div>
         )}
       </RightDrawer>
     </div>
